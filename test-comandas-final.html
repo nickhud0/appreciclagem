@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Teste Final - Comandas</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        .log { background: #f5f5f5; padding: 10px; margin: 10px 0; border-radius: 5px; }
+        .error { background: #ffebee; color: #c62828; }
+        .success { background: #e8f5e8; color: #2e7d32; }
+        .warning { background: #fff3e0; color: #f57c00; }
+        button { padding: 10px 20px; margin: 5px; background: #2196f3; color: white; border: none; border-radius: 5px; cursor: pointer; }
+        button:hover { background: #1976d2; }
+        .test-section { border: 1px solid #ddd; margin: 20px 0; padding: 15px; border-radius: 5px; }
+    </style>
+</head>
+<body>
+    <h1>🔧 Teste Final - Comandas</h1>
+    
+    <div class="test-section">
+        <h2>1. Teste de Inicialização</h2>
+        <button onclick="testInit()">Testar Inicialização</button>
+        <div id="init-results"></div>
+    </div>
+
+    <div class="test-section">
+        <h2>2. Teste de Criação de Comanda</h2>
+        <button onclick="testCreateComanda()">Criar Comanda de Teste</button>
+        <div id="create-results"></div>
+    </div>
+
+    <div class="test-section">
+        <h2>3. Teste de Carregamento</h2>
+        <button onclick="testLoadComandas()">Carregar Comandas</button>
+        <div id="load-results"></div>
+    </div>
+
+    <div class="test-section">
+        <h2>4. Teste de Busca</h2>
+        <button onclick="testSearchComandas()">Buscar Comandas</button>
+        <div id="search-results"></div>
+    </div>
+
+    <div class="test-section">
+        <h2>5. Limpeza</h2>
+        <button onclick="clearAllData()">Limpar Todos os Dados</button>
+        <button onclick="clearLogs()">Limpar Logs</button>
+    </div>
+
+    <div id="logs"></div>
+
+    <script>
+        function log(message, type = 'info', targetId = 'logs') {
+            const targetDiv = document.getElementById(targetId);
+            const logDiv = document.createElement('div');
+            logDiv.className = `log ${type}`;
+            logDiv.innerHTML = `<strong>${new Date().toLocaleTimeString()}</strong>: ${message}`;
+            targetDiv.appendChild(logDiv);
+            console.log(`[${type.toUpperCase()}] ${message}`);
+        }
+
+        function clearLogs() {
+            document.getElementById('logs').innerHTML = '';
+        }
+
+        function clearAllData() {
+            localStorage.removeItem('comandas_cache');
+            localStorage.removeItem('comandaAtual');
+            localStorage.removeItem('sample_data_loaded');
+            log('🗑️ Todos os dados limpos', 'success');
+        }
+
+        async function testInit() {
+            log('🔧 Iniciando teste de inicialização...', 'info', 'init-results');
+            
+            try {
+                // Verificar localStorage
+                const hasComandasCache = localStorage.getItem('comandas_cache');
+                log(`📦 Cache de comandas: ${hasComandasCache ? 'SIM' : 'NÃO'}`, hasComandasCache ? 'success' : 'warning', 'init-results');
+                
+                if (hasComandasCache) {
+                    const comandas = JSON.parse(hasComandasCache);
+                    log(`📊 Total de comandas: ${comandas.length}`, 'info', 'init-results');
+                }
+
+                // Verificar comanda atual
+                const comandaAtual = localStorage.getItem('comandaAtual');
+                log(`📝 Comanda atual: ${comandaAtual ? 'SIM' : 'NÃO'}`, comandaAtual ? 'success' : 'warning', 'init-results');
+
+                log('✅ Inicialização OK', 'success', 'init-results');
+            } catch (error) {
+                log(`❌ Erro na inicialização: ${error.message}`, 'error', 'init-results');
+            }
+        }
+
+        async function testCreateComanda() {
+            log('➕ Criando comanda de teste...', 'info', 'create-results');
+            
+            try {
+                const novaComanda = {
+                    id: Date.now(),
+                    numero: `TEST-${Date.now()}`,
+                    tipo: 'venda',
+                    total: 150.75,
+                    status: 'aberta',
+                    cliente: 'Cliente Teste',
+                    observacoes: 'Comanda de teste final',
+                    itens: [
+                        { material: 'Papel', quantidade: 15, preco: 5.00, total: 75.00 },
+                        { material: 'Plástico', quantidade: 7.5, preco: 10.10, total: 75.75 }
+                    ],
+                    created_at: new Date().toISOString(),
+                    isSynced: false
+                };
+
+                const cached = localStorage.getItem('comandas_cache');
+                const comandas = cached ? JSON.parse(cached) : [];
+                comandas.push(novaComanda);
+                
+                // Manter apenas as últimas 20
+                const comandasLimitadas = comandas.slice(-20);
+                localStorage.setItem('comandas_cache', JSON.stringify(comandasLimitadas));
+                
+                log(`✅ Comanda criada: ${novaComanda.numero}`, 'success', 'create-results');
+                log(`📊 Total após criação: ${comandasLimitadas.length}`, 'info', 'create-results');
+                log(`💰 Total da comanda: R$ ${novaComanda.total.toFixed(2)}`, 'info', 'create-results');
+            } catch (error) {
+                log(`❌ Erro ao criar comanda: ${error.message}`, 'error', 'create-results');
+            }
+        }
+
+        async function testLoadComandas() {
+            log('📋 Carregando comandas...', 'info', 'load-results');
+            
+            try {
+                const cached = localStorage.getItem('comandas_cache');
+                if (cached) {
+                    const comandas = JSON.parse(cached);
+                    log(`✅ Comandas carregadas: ${comandas.length}`, 'success', 'load-results');
+                    
+                    if (comandas.length > 0) {
+                        comandas.forEach((comanda, index) => {
+                            log(`📄 ${index + 1}. ${comanda.numero} - ${comanda.tipo} - R$ ${comanda.total.toFixed(2)}`, 'info', 'load-results');
+                        });
+                    }
+                } else {
+                    log('⚠️ Nenhuma comanda encontrada', 'warning', 'load-results');
+                }
+            } catch (error) {
+                log(`❌ Erro ao carregar comandas: ${error.message}`, 'error', 'load-results');
+            }
+        }
+
+        async function testSearchComandas() {
+            log('🔍 Testando busca de comandas...', 'info', 'search-results');
+            
+            try {
+                const cached = localStorage.getItem('comandas_cache');
+                if (cached) {
+                    const comandas = JSON.parse(cached);
+                    const searchTerm = 'TEST';
+                    
+                    const resultados = comandas.filter(comanda => 
+                        comanda.numero.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                        comanda.cliente?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                        comanda.observacoes?.toLowerCase().includes(searchTerm.toLowerCase())
+                    );
+                    
+                    log(`🔍 Busca por "${searchTerm}": ${resultados.length} resultados`, 'info', 'search-results');
+                    
+                    if (resultados.length > 0) {
+                        resultados.forEach((comanda, index) => {
+                            log(`📄 ${index + 1}. ${comanda.numero} - ${comanda.cliente}`, 'info', 'search-results');
+                        });
+                    }
+                } else {
+                    log('⚠️ Nenhum cache disponível para busca', 'warning', 'search-results');
+                }
+            } catch (error) {
+                log(`❌ Erro na busca: ${error.message}`, 'error', 'search-results');
+            }
+        }
+
+        // Executar teste inicial
+        window.onload = function() {
+            log('🚀 Página carregada - Pronto para testes', 'success');
+            testInit();
+        };
+    </script>
+</body>
+</html>

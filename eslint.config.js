@@ -5,7 +5,7 @@ import reactRefresh from "eslint-plugin-react-refresh";
 import tseslint from "typescript-eslint";
 
 export default tseslint.config(
-  { ignores: ["dist", "node_modules", "capacitor"] },
+  { ignores: ["dist", "node_modules", "capacitor", "android", "mnt"] },
   {
     extends: [js.configs.recommended, ...tseslint.configs.recommended],
     files: ["**/*.{ts,tsx}"],
@@ -23,12 +23,24 @@ export default tseslint.config(
         "warn",
         { allowConstantExport: true },
       ],
+      // Disallow mixing different operators (e.g., ?? with ||) without parentheses
+      "no-mixed-operators": ["error", {
+        groups: [
+          ["&&", "||"],
+          ["==", "!=", "===", "!=="],
+          [">", ">=", "<", "<="],
+          ["+", "-", "*", "/", "%"],
+          ["**", "^", "~"],
+          ["in", "instanceof"],
+          ["??", "||", "&&"]
+        ],
+        allowSamePrecedence: false
+      }],
       "@typescript-eslint/no-unused-vars": ["error", { 
         argsIgnorePattern: "^_",
         varsIgnorePattern: "^_" 
       }],
       "@typescript-eslint/no-explicit-any": "warn",
-      "@typescript-eslint/prefer-const": "error",
       "no-console": ["warn", { allow: ["warn", "error"] }],
       "prefer-const": "error",
       "no-var": "error",

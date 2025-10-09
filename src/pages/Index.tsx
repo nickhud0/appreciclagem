@@ -18,7 +18,6 @@ import {
 import { Link } from "react-router-dom";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { NetworkStatus } from "@/components/NetworkStatus";
 
 const menuItems = [
   { title: "COMPRA", path: "/compra", icon: ShoppingCart, color: "text-primary" },
@@ -50,9 +49,6 @@ const Index = () => {
             <p className="text-muted-foreground">
               Gestão completa do seu depósito
             </p>
-          </div>
-          <div className="flex items-center gap-2">
-            <NetworkStatus />
           </div>
         </div>
       </div>

@@ -1,0 +1,220 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Reset App Data</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            max-width: 600px;
+            margin: 50px auto;
+            padding: 20px;
+            background: #f8f9fa;
+        }
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 12px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #dc3545;
+            margin-bottom: 20px;
+        }
+        .warning {
+            background: #fff3cd;
+            border: 1px solid #ffeaa7;
+            color: #856404;
+            padding: 15px;
+            border-radius: 8px;
+            margin: 20px 0;
+        }
+        button {
+            background: #dc3545;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 16px;
+            margin: 10px 5px;
+        }
+        button:hover {
+            background: #c82333;
+        }
+        .success {
+            background: #d4edda;
+            border: 1px solid #c3e6cb;
+            color: #155724;
+            padding: 15px;
+            border-radius: 8px;
+            margin: 20px 0;
+            display: none;
+        }
+        #output {
+            background: #f8f9fa;
+            border: 1px solid #dee2e6;
+            padding: 15px;
+            border-radius: 6px;
+            margin-top: 20px;
+            font-family: monospace;
+            white-space: pre-wrap;
+            max-height: 300px;
+            overflow-y: auto;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🗑️ Reset App Data</h1>
+        <p>Esta ferramenta irá limpar <strong>TODOS</strong> os dados do app (localStorage e IndexedDB) para que ele inicie completamente limpo.</p>
+        
+        <div class="warning">
+            <strong>⚠️ ATENÇÃO:</strong> Esta ação é irreversível! Todos os dados locais serão perdidos permanentemente.
+            <br><br>
+            <strong>Dados que serão removidos:</strong>
+            <ul>
+                <li>Materiais cadastrados</li>
+                <li>Comandas e histórico</li>
+                <li>Vales e pendências</li>
+                <li>Configurações do app</li>
+                <li>Cache de estoque</li>
+                <li>Dados de sincronização</li>
+            </ul>
+        </div>
+
+        <button onclick="resetAppData()">🗑️ Limpar Todos os Dados</button>
+        <button onclick="location.reload()">🔄 Recarregar Página</button>
+
+        <div id="success" class="success">
+            ✅ Dados limpos com sucesso! Recarregue a página para ver o app limpo.
+        </div>
+
+        <div id="output"></div>
+    </div>
+
+    <script>
+        function log(message) {
+            const output = document.getElementById('output');
+            const timestamp = new Date().toLocaleTimeString();
+            output.textContent += `[${timestamp}] ${message}\n`;
+            console.log(message);
+        }
+
+        async function resetAppData() {
+            log('🧹 Iniciando reset completo dos dados do app...');
+            
+            try {
+                // Lista de todas as chaves possíveis no localStorage
+                const localStorageKeys = [
+                    // Cache de dados
+                    'materiais_cache',
+                    'transacoes_cache',
+                    'vales_cache',
+                    'despesas_cache',
+                    'pendencias_cache',
+                    'comandas_cache',
+                    'comandas_v2_cache',
+                    
+                    // Dados diretos
+                    'materiais',
+                    'transacoes',
+                    'vales',
+                    'despesas',
+                    'pendencias',
+                    'comandas',
+                    
+                    // Cache de estoque e outros
+                    'estoqueAtualCache',
+                    'sobrasCache',
+                    'historicoComandas',
+                    
+                    // Configurações de exemplo
+                    'sample_data_initialized',
+                    
+                    // Configurações de sincronização
+                    'last_sync_timestamp',
+                    'sync_in_progress',
+                    
+                    // Configurações do app
+                    'config_supabase_url',
+                    'config_supabase_anon_key',
+                    'config_printer_ip',
+                    'config_device_prefix'
+                ];
+
+                let clearedCount = 0;
+
+                // Limpar localStorage
+                log('📋 Verificando localStorage...');
+                localStorageKeys.forEach(key => {
+                    if (localStorage.getItem(key) !== null) {
+                        localStorage.removeItem(key);
+                        log(`🗑️ Removido: ${key}`);
+                        clearedCount++;
+                    }
+                });
+
+                // Limpar tudo do localStorage que possa ter sobrado
+                const allKeys = Object.keys(localStorage);
+                allKeys.forEach(key => {
+                    if (key.includes('cache') || key.includes('data') || key.includes('sync') || key.includes('material') || key.includes('comanda')) {
+                        localStorage.removeItem(key);
+                        log(`🗑️ Removido (adicional): ${key}`);
+                        clearedCount++;
+                    }
+                });
+
+                // Limpar IndexedDB se disponível
+                if ('indexedDB' in window) {
+                    log('🗄️ Limpando IndexedDB...');
+                    
+                    try {
+                        // Tentar deletar databases conhecidos
+                        const dbNames = [
+                            'reciclagem_pereque.db',
+                            'reciclagem_pereque_v2.db',
+                            'CapacitorStorage'
+                        ];
+                        
+                        for (const dbName of dbNames) {
+                            try {
+                                await new Promise((resolve, reject) => {
+                                    const deleteRequest = indexedDB.deleteDatabase(dbName);
+                                    deleteRequest.onsuccess = () => {
+                                        log(`🗑️ Database removido: ${dbName}`);
+                                        resolve(true);
+                                    };
+                                    deleteRequest.onerror = () => reject(deleteRequest.error);
+                                    deleteRequest.onblocked = () => {
+                                        log(`⚠️ Database bloqueado: ${dbName}`);
+                                        resolve(false);
+                                    };
+                                });
+                            } catch (error) {
+                                log(`⚠️ Erro ao remover ${dbName}: ${error.message}`);
+                            }
+                        }
+                    } catch (error) {
+                        log(`⚠️ Erro geral no IndexedDB: ${error.message}`);
+                    }
+                }
+
+                // Limpar sessionStorage também
+                log('🗃️ Limpando sessionStorage...');
+                sessionStorage.clear();
+
+                log(`✅ Reset concluído! ${clearedCount} itens removidos do localStorage`);
+                log('🔄 Recarregue a página para ver o app completamente limpo');
+                
+                document.getElementById('success').style.display = 'block';
+                
+            } catch (error) {
+                log(`❌ Erro durante o reset: ${error.message}`);
+                console.error('Erro completo:', error);
+            }
+        }
+    </script>
+</body>
+</html>

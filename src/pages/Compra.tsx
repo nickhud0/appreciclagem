@@ -1,23 +1,18 @@
-import { ArrowLeft, Plus, Package } from "lucide-react";
-import { Link, useNavigate } from "react-router-dom";
+import { ArrowLeft, Plus, Package, CloudOff } from "lucide-react";
+import { useNavigate } from "react-router-dom";
 import { useState, useEffect } from "react";
-import { logger } from '@/utils/logger';
-import { notifyError } from '@/utils/errorHandler';
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
-import { NetworkStatus } from "@/components/NetworkStatus";
-import { toYMD } from "@/utils/formatters";
 import { formatCurrency } from "@/utils/formatters";
-import { useDataService } from "@/hooks/useDataService";
-import { Material, Transacao } from "@/services/localDbService";
-import { LoadingSpinner, ErrorState, EmptyState, PageWrapper } from "@/components/ui/loading-states";
+import { selectAll, addToSyncQueue, insert } from "@/database";
+import { getSyncStatus } from "@/services/syncEngine";
 
 const Compra = () => {
-  const [selectedMaterial, setSelectedMaterial] = useState<any>(null);
+  const [selectedMaterial, setSelectedMaterial] = useState<Material | null>(null);
   const [peso, setPeso] = useState("");
   const [precoPersonalizado, setPrecoPersonalizado] = useState("");
   const [desconto, setDesconto] = useState("");
@@ -25,19 +20,30 @@ const Compra = () => {
   const navigate = useNavigate();
   const { toast } = useToast();
 
-  const materiaisService = useDataService<Material>('materiais');
-  const transacoesService = useDataService<Transacao>('transacoes');
+  // Calculate subtotal in real-time
+  const calcularSubtotal = () => {
+    const pesoNum = parseFloat(peso) || 0;
+    const descontoKg = parseFloat(desconto) || 0;
+    const pesoLiquido = Math.max(0, pesoNum - descontoKg);
+    const precoNum = parseFloat(precoPersonalizado) || 0;
+    return pesoLiquido * Math.max(0, precoNum);
+  };
 
-  const { 
-    data: materiais, 
-    loading: loadingMateriais, 
-    error: errorMateriais,
-    isOnline,
-    hasData,
-    refresh: refreshMateriais
-  } = materiaisService;
+  const [materiais, setMateriais] = useState<any[]>([]);
+  const [loadingMateriais, setLoadingMateriais] = useState(true);
 
-  const { createItem: createTransacao } = transacoesService;
+  useEffect(() => {
+    async function load() {
+      try {
+        setLoadingMateriais(true);
+        const rows = await selectAll<any>('material', 'nome ASC');
+        setMateriais(rows);
+      } finally {
+        setLoadingMateriais(false);
+      }
+    }
+    void load();
+  }, []);
 
   // Verificar se existe uma comanda de venda em andamento
   useEffect(() => {
@@ -47,19 +53,18 @@ const Compra = () => {
       if (comanda.tipo === "venda" && comanda.itens.length > 0) {
         toast({
           title: "Atenção",
-          description: "Não é possível adicionar materiais de compra em uma comanda de venda!",
+          description: "Existe uma comanda de venda em andamento. Finalize-a antes de fazer compras.",
           variant: "destructive"
         });
-        navigate("/comanda-atual");
-        return;
+        // Não redirecionar automaticamente, apenas mostrar o aviso
       }
     }
-  }, [navigate, toast]);
+  }, [toast]);
 
   const handleMaterialClick = (material: any) => {
     setSelectedMaterial(material);
     setPeso("");
-    setPrecoPersonalizado(material.preco_compra_kg?.toString() || "0");
+    setPrecoPersonalizado(material.preco_compra?.toString() || "0");
     setDesconto("");
     setIsDialogOpen(true);
   };
@@ -73,67 +78,83 @@ const Compra = () => {
     const precoNum = parseFloat(precoPersonalizado) || 0;
     const total = pesoLiquido * Math.max(0, precoNum);
 
-    // Criar transação para o banco de dados
-    const success = await createTransacao({
-      tipo: 'compra',
-      material_id: selectedMaterial.id!,
-      peso: pesoLiquido,
-      valor_total: total,
-      observacoes: desconto ? `Desconto: ${descontoKg}kg` : undefined,
-      created_at: toYMD(new Date())
-    });
+    // Registrar em ultimas_20 localmente e enfileirar
+    try {
+      const status = getSyncStatus();
+      const origem_offline = status.hasCredentials && status.isOnline ? 0 : 1;
+      const now = new Date().toISOString();
+      const novoId = await insert('ultimas_20', {
+        data: now,
+        material: selectedMaterial.id,
+        comanda: null,
+        preco_kg: Math.max(0, parseFloat(precoPersonalizado) || 0),
+        kg_total: pesoLiquido,
+        valor_total: total,
+        criado_por: 'local-user',
+        atualizado_por: 'local-user',
+        origem_offline
+      });
+      await addToSyncQueue('ultimas_20', 'INSERT', novoId, {
+        id: novoId,
+        data: now,
+        material: selectedMaterial.id,
+        comanda: null,
+        tipo: 'compra',
+        preco_kg: Math.max(0, parseFloat(precoPersonalizado) || 0),
+        kg_total: pesoLiquido,
+        valor_total: total,
+        criado_por: 'local-user',
+        atualizado_por: 'local-user'
+      });
+    } catch {}
 
-    if (success) {
-      // Criar item para a comanda local (compatibilidade)
-      const novoItem = {
-        id: Date.now(),
-        material: selectedMaterial.nome,
-        preco: precoNum,
-        quantidade: pesoLiquido,
-        total: total
-      };
+    // Criar item para a comanda local (compatibilidade)
+    const novoItem = {
+      id: Date.now(),
+      material: selectedMaterial.nome,
+      preco: precoNum,
+      quantidade: pesoLiquido,
+      total: total
+    };
 
-      // Atualizar comanda no localStorage (para manter compatibilidade)
-      const comandaStorage = localStorage.getItem('comandaAtual');
-      let comanda = { itens: [], tipo: "compra", total: 0 };
-      
-      if (comandaStorage) {
-        comanda = JSON.parse(comandaStorage);
-      }
-      
-      comanda.itens.push(novoItem);
-      comanda.tipo = "compra";
-      comanda.total = comanda.itens.reduce((acc: any, item: any) => acc + item.total, 0);
-      
-      localStorage.setItem('comandaAtual', JSON.stringify(comanda));
-      
-      setIsDialogOpen(false);
-      navigate("/comanda-atual");
+    // Atualizar comanda no localStorage (para manter compatibilidade)
+    const comandaStorage = localStorage.getItem('comandaAtual');
+    let comanda = { itens: [], tipo: "compra", total: 0 };
+    
+    if (comandaStorage) {
+      comanda = JSON.parse(comandaStorage);
     }
+    
+    comanda.itens.push(novoItem);
+    comanda.tipo = "compra";
+    comanda.total = comanda.itens.reduce((acc: any, item: any) => acc + item.total, 0);
+    
+    localStorage.setItem('comandaAtual', JSON.stringify(comanda));
+    
+    setIsDialogOpen(false);
+    navigate("/comanda-atual");
   };
 
   const handleCancelar = () => {
     setIsDialogOpen(false);
     setSelectedMaterial(null);
+    setPeso("");
+    setPrecoPersonalizado("");
+    setDesconto("");
   };
 
-  const calcularSubtotal = () => {
-    if (!selectedMaterial || !peso) return 0;
-    const pesoNum = parseFloat(peso) || 0;
-    const descontoKg = parseFloat(desconto) || 0;
-    const pesoLiquido = Math.max(0, pesoNum - descontoKg);
-    const precoNum = parseFloat(precoPersonalizado) || 0;
-    return pesoLiquido * Math.max(0, precoNum);
-  };
-
-  // Função para determinar a cor de fundo do ícone baseada no índice
-  const getIconColor = (index: number) => {
-    const colors = [
-      "bg-primary", "bg-success", "bg-warning", "bg-destructive",
-      "bg-accent", "bg-secondary", "bg-primary-dark", "bg-success/80"
-    ];
-    return colors[index % colors.length];
-  };
+  if (loadingMateriais) {
+    return (
+      <div className="min-h-screen bg-background p-4">
+        <div className="flex items-center justify-center h-64">
+          <div className="text-center">
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto mb-4"></div>
+            <p className="text-muted-foreground">Carregando materiais...</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-background p-4">
@@ -145,146 +166,135 @@ const Compra = () => {
           </Button>
           <h1 className="text-2xl font-bold text-foreground">Compras</h1>
         </div>
-        <NetworkStatus />
       </div>
 
       {/* Lista de Materiais */}
       <div className="mb-6">
         <div className="flex items-center justify-between mb-3">
           <h2 className="text-lg font-semibold text-foreground">
-            Selecionar Material para Compra
+            Materiais Disponíveis
           </h2>
-          <Link to="/cadastrar-material">
-            <Button variant="outline" size="sm">
-              <Plus className="h-4 w-4 mr-2" />
-              Novo Material
-            </Button>
-          </Link>
         </div>
 
-        <PageWrapper 
-          loading={loadingMateriais} 
-          error={errorMateriais} 
-          onRetry={refreshMateriais}
-          loadingMessage="Carregando materiais..."
-        >
-          {materiais.length === 0 ? (
-            <EmptyState
-              icon={Package}
-              title="Nenhum material cadastrado"
-              description="Cadastre o primeiro material para começar as compras"
-              actionLabel="Cadastrar Primeiro Material"
-              onAction={() => navigate("/cadastrar-material")}
-            />
-          ) : (
-            <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4">
-              {materiais.map((material, index) => (
-                <Card 
-                  key={material.id} 
-                  className="p-4 cursor-pointer bg-card border-white hover:shadow-md transition-shadow"
+        {materiais.length === 0 ? (
+          <Card className="p-8 text-center">
+            <Package className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+            <h3 className="text-lg font-semibold mb-2">Nenhum material cadastrado</h3>
+            <p className="text-muted-foreground mb-4">
+              Cadastre materiais primeiro para poder comprar
+            </p>
+            <Button onClick={() => navigate('/cadastrar-material')}>
+              <Plus className="h-4 w-4 mr-2" />
+              Cadastrar Material
+            </Button>
+          </Card>
+        ) : (
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4">
+            {materiais.map((material, index) => {
+              // Cores que mudam a cada 3 materiais
+              const colorIndex = Math.floor(index / 3) % 3;
+              const colors = [
+                { bg: 'bg-blue-100', text: 'text-blue-600', border: 'border-blue-200' },
+                { bg: 'bg-green-100', text: 'text-green-600', border: 'border-green-200' },
+                { bg: 'bg-purple-100', text: 'text-purple-600', border: 'border-purple-200' }
+              ];
+              const currentColor = colors[colorIndex];
+              
+              return (
+                <Card
+                  key={material.id}
+                  className={`relative p-3 flex flex-col items-center text-center cursor-pointer hover:scale-105 transition-all duration-200 ${currentColor.bg} ${currentColor.border} border-2`}
                   onClick={() => handleMaterialClick(material)}
                 >
-                  <div className="flex flex-col items-center space-y-3 text-center">
-                    <div className={`w-16 h-16 rounded-full ${getIconColor(index)} flex items-center justify-center shadow-card`}>
-                      <Package className="h-8 w-8 text-white" />
-                    </div>
-                    <div className="space-y-1">
-                      <h3 className="font-semibold text-foreground text-sm leading-tight">
-                        {material.nome}
-                      </h3>
-                      <p className="text-xs text-muted-foreground">
-                        {material.categoria || "Outros"}
-                      </p>
-                      <p className="font-bold text-success text-sm">
-                        {formatCurrency(material.preco_compra_kg || 0)}/kg
-                      </p>
-                    </div>
+                  {material.origem_offline === 1 && (
+                    <CloudOff className="absolute left-2 top-2 h-4 w-4 text-orange-700" />
+                  )}
+                  <Package className={`h-6 w-6 ${currentColor.text} mb-2`} />
+                  <h3 className="w-full font-semibold text-foreground text-sm leading-snug mb-1 break-words text-center sm:text-base sm:leading-tight">
+                    {material.nome}
+                  </h3>
+                  <div className="flex items-center gap-2">
+                    <p className={`text-base ${currentColor.text} font-medium`}>
+                      {formatCurrency(material.preco_compra)}/kg
+                    </p>
                   </div>
                 </Card>
-              ))}
-            </div>
-          )}
-        </PageWrapper>
+              );
+            })}
+          </div>
+        )}
       </div>
 
-      {/* Dialog para seleção de peso e desconto */}
+      {/* Dialog para adicionar item */}
       <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-        <DialogContent className="sm:max-w-md">
+        <DialogContent>
           <DialogHeader>
-            <DialogTitle>Adicionar Material - Compra</DialogTitle>
+            <DialogTitle>Adicionar à Compra</DialogTitle>
           </DialogHeader>
           
           {selectedMaterial && (
             <div className="space-y-4">
-              <div className="p-3 bg-muted rounded-lg">
-                <h3 className="font-semibold">{selectedMaterial.nome}</h3>
-                <p className="text-sm text-muted-foreground">{selectedMaterial.categoria || "Outros"}</p>
-                <p className="text-sm font-medium">{formatCurrency(selectedMaterial.preco_compra_kg || 0)}/kg</p>
+              <div>
+                <Label htmlFor="material">Material</Label>
+                <Input 
+                  id="material"
+                  value={selectedMaterial.nome}
+                  disabled
+                  className="bg-muted"
+                />
+              </div>
+              
+              <div>
+                <Label htmlFor="peso">Peso (kg)</Label>
+                <Input 
+                  id="peso"
+                  type="number"
+                  step="0.01"
+                  value={peso}
+                  onChange={(e) => setPeso(e.target.value)}
+                  placeholder="Digite o peso"
+                />
+              </div>
+              
+              <div>
+                <Label htmlFor="preco">Preço por kg</Label>
+                <Input 
+                  id="preco"
+                  type="number"
+                  step="0.01"
+                  value={precoPersonalizado}
+                  onChange={(e) => setPrecoPersonalizado(e.target.value)}
+                  placeholder="Digite o preço"
+                />
+              </div>
+              
+              <div>
+                <Label htmlFor="desconto">Desconto (kg)</Label>
+                <Input 
+                  id="desconto"
+                  type="number"
+                  step="0.01"
+                  value={desconto}
+                  onChange={(e) => setDesconto(e.target.value)}
+                  placeholder="Digite o desconto"
+                />
+              </div>
+              
+              {/* Subtotal Section */}
+              <div className="bg-green-50 border border-green-200 rounded-lg p-4 mt-4">
+                <div className="flex items-center justify-between">
+                  <p className="text-lg text-green-700 font-semibold">Subtotal</p>
+                  <p className="text-3xl font-black text-green-800">
+                    {formatCurrency(calcularSubtotal())}
+                  </p>
+                </div>
               </div>
 
-              <div className="space-y-3">
-                <div>
-                  <Label htmlFor="peso">Peso (kg) *</Label>
-                  <Input
-                    id="peso"
-                    type="number"
-                    step="0.1"
-                    placeholder="0.0"
-                    value={peso}
-                    onChange={(e) => setPeso(e.target.value)}
-                    className="mt-1"
-                  />
-                </div>
-
-                <div>
-                  <Label htmlFor="preco">Preço por kg (R$)</Label>
-                  <Input
-                    id="preco"
-                    type="number"
-                    step="0.01"
-                    placeholder="0.00"
-                    value={precoPersonalizado}
-                    onChange={(e) => setPrecoPersonalizado(e.target.value)}
-                    className="mt-1"
-                  />
-                </div>
-
-                <div>
-                  <Label htmlFor="desconto">Desconto por Kg</Label>
-                  <Input
-                    id="desconto"
-                    type="number"
-                    step="0.1"
-                    placeholder="0.0"
-                    value={desconto}
-                    onChange={(e) => setDesconto(e.target.value)}
-                    className="mt-1"
-                  />
-                </div>
-
-                <div className="p-3 bg-success/10 rounded-lg">
-                  <div className="flex justify-between items-center">
-                    <span className="font-medium">Subtotal:</span>
-                    <span className="text-lg font-bold text-success">
-                      {formatCurrency(calcularSubtotal())}
-                    </span>
-                  </div>
-                </div>
-              </div>
-
-              <div className="flex space-x-2 pt-4">
-                <Button 
-                  variant="outline" 
-                  className="flex-1"
-                  onClick={handleCancelar}
-                >
+              <div className="flex justify-end space-x-2">
+                <Button variant="outline" onClick={handleCancelar}>
                   Cancelar
                 </Button>
-                <Button 
-                  className="flex-1 bg-gradient-to-r from-success to-success/80"
-                  onClick={handleAdicionar}
-                  disabled={!peso}
-                >
+                <Button onClick={handleAdicionar} disabled={!peso}>
                   Adicionar
                 </Button>
               </div>

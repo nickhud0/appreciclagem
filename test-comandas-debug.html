@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Teste Debug - Comandas</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        .log { background: #f5f5f5; padding: 10px; margin: 10px 0; border-radius: 5px; }
+        .error { background: #ffebee; color: #c62828; }
+        .success { background: #e8f5e8; color: #2e7d32; }
+        .warning { background: #fff3e0; color: #f57c00; }
+        button { padding: 10px 20px; margin: 5px; background: #2196f3; color: white; border: none; border-radius: 5px; cursor: pointer; }
+        button:hover { background: #1976d2; }
+    </style>
+</head>
+<body>
+    <h1>🔍 Teste Debug - Comandas</h1>
+    
+    <div>
+        <button onclick="testDatabaseInit()">1. Testar Inicialização do Banco</button>
+        <button onclick="testComandasLoad()">2. Testar Carregamento de Comandas</button>
+        <button onclick="testComandasSearch()">3. Testar Busca de Comandas</button>
+        <button onclick="testComandasCreate()">4. Testar Criação de Comanda</button>
+        <button onclick="clearLogs()">Limpar Logs</button>
+    </div>
+
+    <div id="logs"></div>
+
+    <script>
+        function log(message, type = 'info') {
+            const logsDiv = document.getElementById('logs');
+            const logDiv = document.createElement('div');
+            logDiv.className = `log ${type}`;
+            logDiv.innerHTML = `<strong>${new Date().toLocaleTimeString()}</strong>: ${message}`;
+            logsDiv.appendChild(logDiv);
+            console.log(`[${type.toUpperCase()}] ${message}`);
+        }
+
+        function clearLogs() {
+            document.getElementById('logs').innerHTML = '';
+        }
+
+        async function testDatabaseInit() {
+            log('🔧 Iniciando teste de inicialização do banco...', 'info');
+            
+            try {
+                // Simular verificação de localStorage
+                const hasComandasCache = localStorage.getItem('comandas_cache');
+                log(`📦 Cache de comandas no localStorage: ${hasComandasCache ? 'SIM' : 'NÃO'}`, hasComandasCache ? 'success' : 'warning');
+                
+                if (hasComandasCache) {
+                    const comandas = JSON.parse(hasComandasCache);
+                    log(`📊 Total de comandas em cache: ${comandas.length}`, 'info');
+                }
+
+                // Verificar se há dados de exemplo
+                const hasSampleData = localStorage.getItem('sample_data_loaded');
+                log(`🎯 Dados de exemplo carregados: ${hasSampleData ? 'SIM' : 'NÃO'}`, hasSampleData ? 'success' : 'warning');
+
+                log('✅ Teste de inicialização concluído', 'success');
+            } catch (error) {
+                log(`❌ Erro no teste de inicialização: ${error.message}`, 'error');
+            }
+        }
+
+        async function testComandasLoad() {
+            log('📋 Iniciando teste de carregamento de comandas...', 'info');
+            
+            try {
+                const cached = localStorage.getItem('comandas_cache');
+                if (cached) {
+                    const comandas = JSON.parse(cached);
+                    log(`✅ Comandas carregadas: ${comandas.length}`, 'success');
+                    
+                    if (comandas.length > 0) {
+                        const ultimaComanda = comandas[comandas.length - 1];
+                        log(`📄 Última comanda: ${ultimaComanda.numero} (${ultimaComanda.tipo})`, 'info');
+                    }
+                } else {
+                    log('⚠️ Nenhuma comanda encontrada no cache', 'warning');
+                }
+            } catch (error) {
+                log(`❌ Erro ao carregar comandas: ${error.message}`, 'error');
+            }
+        }
+
+        async function testComandasSearch() {
+            log('🔍 Iniciando teste de busca de comandas...', 'info');
+            
+            try {
+                const cached = localStorage.getItem('comandas_cache');
+                if (cached) {
+                    const comandas = JSON.parse(cached);
+                    const searchTerm = 'teste';
+                    
+                    const resultados = comandas.filter(comanda => 
+                        comanda.numero.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                        comanda.cliente?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                        comanda.observacoes?.toLowerCase().includes(searchTerm.toLowerCase())
+                    );
+                    
+                    log(`🔍 Busca por "${searchTerm}": ${resultados.length} resultados`, 'info');
+                } else {
+                    log('⚠️ Nenhum cache disponível para busca', 'warning');
+                }
+            } catch (error) {
+                log(`❌ Erro na busca: ${error.message}`, 'error');
+            }
+        }
+
+        async function testComandasCreate() {
+            log('➕ Iniciando teste de criação de comanda...', 'info');
+            
+            try {
+                const novaComanda = {
+                    id: Date.now(),
+                    numero: `TEST-${Date.now()}`,
+                    tipo: 'venda',
+                    total: 100.50,
+                    status: 'aberta',
+                    cliente: 'Cliente Teste',
+                    observacoes: 'Comanda de teste',
+                    itens: [
+                        { material: 'Papel', quantidade: 10, preco: 5.00, total: 50.00 },
+                        { material: 'Plástico', quantidade: 5, preco: 10.10, total: 50.50 }
+                    ],
+                    created_at: new Date().toISOString(),
+                    isSynced: false
+                };
+
+                const cached = localStorage.getItem('comandas_cache');
+                const comandas = cached ? JSON.parse(cached) : [];
+                comandas.push(novaComanda);
+                
+                // Manter apenas as últimas 20
+                const comandasLimitadas = comandas.slice(-20);
+                localStorage.setItem('comandas_cache', JSON.stringify(comandasLimitadas));
+                
+                log(`✅ Comanda criada: ${novaComanda.numero}`, 'success');
+                log(`📊 Total de comandas após criação: ${comandasLimitadas.length}`, 'info');
+            } catch (error) {
+                log(`❌ Erro ao criar comanda: ${error.message}`, 'error');
+            }
+        }
+
+        // Executar teste inicial
+        window.onload = function() {
+            log('🚀 Página carregada - Pronto para testes', 'success');
+            testDatabaseInit();
+        };
+    </script>
+</body>
+</html>

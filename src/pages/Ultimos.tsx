@@ -1,106 +1,79 @@
-import { ArrowLeft, Clock, Package } from "lucide-react";
+import { ArrowLeft, Clock, CloudOff } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { LoadingSpinner, ErrorState, PageWrapper, EmptyState } from "@/components/ui/loading-states";
-import { useTransacoes } from "@/hooks/useStandardData";
-import { formatCurrency, formatDate } from "@/utils/formatters";
+import { useEffect, useState } from "react";
+import { selectAll } from "@/database";
+import { formatCurrency } from "@/utils/formatters";
 
 const Ultimos = () => {
   const navigate = useNavigate();
-  const { transacoes, loading, error, refreshTransacoes } = useTransacoes(15);
+  const [items, setItems] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
 
-  const formatarTransacao = (transacao: any) => ({
-    id: transacao.id,
-    tipo: transacao.tipo === 'venda' ? 'Venda' : 'Compra',
-    material: `Material ${transacao.material_id}`,
-    peso: transacao.peso,
-    valor: transacao.tipo === 'venda' ? transacao.valor_total : -transacao.valor_total,
-    horario: new Date(transacao.created_at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }),
-    icon: Package,
-    color: transacao.tipo === 'venda' ? 'success' : 'primary'
-  });
-
-  const ultimosLancamentos = transacoes.map(formatarTransacao);
+  useEffect(() => {
+    async function load() {
+      try {
+        setLoading(true);
+        const rows = await selectAll<any>('ultimas_20', 'data DESC');
+        setItems(rows);
+      } finally {
+        setLoading(false);
+      }
+    }
+    void load();
+  }, []);
 
   return (
     <div className="min-h-screen bg-background p-4">
       {/* Header */}
-      <div className="flex items-center mb-6">
-        <Button variant="ghost" size="sm" className="mr-3" onClick={() => navigate(-1)}>
-          <ArrowLeft className="h-4 w-4" />
-        </Button>
-        <h1 className="text-2xl font-bold text-foreground">Últimos Lançamentos</h1>
+      <div className="flex items-center justify-between mb-6">
+        <div className="flex items-center">
+          <Button variant="ghost" size="sm" className="mr-3" onClick={() => navigate(-1)}>
+            <ArrowLeft className="h-4 w-4" />
+          </Button>
+          <h1 className="text-2xl font-bold text-foreground">Últimos Itens</h1>
+        </div>
       </div>
 
-      {/* Resumo do Período */}
-      <Card className="mb-6 p-4 bg-gradient-to-r from-accent/10 to-primary/10">
-        <div className="flex items-center justify-between">
-          <div>
-            <h2 className="text-lg font-semibold text-foreground">Atividade Recente</h2>
-            <p className="text-sm text-muted-foreground">Últimas {ultimosLancamentos.length} movimentações</p>
-          </div>
-          <Clock className="h-8 w-8 text-accent" />
+      {/* Conteúdo */}
+      <Card className="p-6">
+        <div className="flex items-center mb-6">
+          <Clock className="h-6 w-6 text-primary mr-3" />
+          <h2 className="text-lg font-semibold">Histórico Recente</h2>
         </div>
-      </Card>
 
-      <PageWrapper 
-        loading={loading} 
-        error={error} 
-        onRetry={refreshTransacoes}
-        loadingMessage="Carregando últimos lançamentos..."
-      >
-        {ultimosLancamentos.length === 0 ? (
-          <EmptyState
-            icon={Package}
-            title="Nenhum lançamento encontrado"
-            description="Ainda não há transações registradas no sistema"
-          />
+        {loading ? (
+          <div className="text-center text-muted-foreground">Carregando...</div>
+        ) : items.length === 0 ? (
+          <Card className="p-8 text-center">
+            <h3 className="text-lg font-semibold mb-2">Nenhum item recente</h3>
+            <p className="text-muted-foreground">Os últimos lançamentos aparecerão aqui.</p>
+          </Card>
         ) : (
-          /* Lista de Lançamentos */
-          <div className="space-y-2">
-            {ultimosLancamentos.map((lancamento) => {
-              const IconComponent = lancamento.icon;
-              return (
-                <Card key={lancamento.id} className="p-3">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center">
-                      <div className={`p-1.5 rounded-full ${lancamento.color === 'success' ? 'bg-success/10' : 'bg-primary/10'} mr-3`}>
-                        <IconComponent className={`h-3 w-3 ${lancamento.color === 'success' ? 'text-success' : 'text-primary'}`} />
-                      </div>
-                      <div>
-                        <div className="flex items-center gap-2 mb-1">
-                          <span className={`text-xs px-2 py-0.5 rounded-full ${lancamento.color === 'success' ? 'bg-success/10 text-success' : 'bg-primary/10 text-primary'} font-medium`}>
-                            {lancamento.tipo}
-                          </span>
-                          <h3 className="font-semibold text-foreground text-sm">
-                            {lancamento.material}
-                          </h3>
-                        </div>
-                        <div className="flex items-center gap-3 text-xs text-muted-foreground">
-                          <span>{lancamento.peso} kg</span>
-                          <span className="flex items-center">
-                            <Clock className="h-3 w-3 mr-1" />
-                            {lancamento.horario}
-                          </span>
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="text-right">
-                      <p className={`font-bold text-sm ${
-                        lancamento.valor > 0 ? 'text-success' : 'text-destructive'
-                      }`}>
-                        {lancamento.valor > 0 ? '+' : ''}{formatCurrency(Math.abs(lancamento.valor))}
-                      </p>
-                    </div>
+          <div className="space-y-3">
+            {items.map((it) => (
+              <Card key={it.id} className="p-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <div className="font-semibold text-foreground">Material #{it.material ?? '—'}</div>
+                    <div className="text-xs text-muted-foreground">{new Date(it.data).toLocaleString()}</div>
                   </div>
-                </Card>
-              );
-            })}
+                  <div className="text-right">
+                    <div className="text-sm">Kg: <span className="font-semibold">{it.kg_total ?? 0}</span></div>
+                    <div className="text-sm">Total: <span className="font-semibold">{formatCurrency(it.valor_total || 0)}</span></div>
+                    {it.origem_offline === 1 && (
+                      <span className="inline-flex items-center text-[10px] text-orange-700 bg-orange-100 border border-orange-200 px-1.5 py-0.5 rounded mt-1">
+                        <CloudOff className="h-3 w-3 mr-1" /> pendente
+                      </span>
+                    )}
+                  </div>
+                </div>
+              </Card>
+            ))}
           </div>
         )}
-      </PageWrapper>
+      </Card>
     </div>
   );
 };

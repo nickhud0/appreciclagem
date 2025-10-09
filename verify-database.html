@@ -1,0 +1,316 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Verificação do Banco de Dados SQLite</title>
+  <style>
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 20px;
+      background: #f5f5f5;
+    }
+    .container {
+      background: white;
+      border-radius: 8px;
+      padding: 30px;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+    }
+    h1 {
+      color: #3b82f6;
+      border-bottom: 3px solid #3b82f6;
+      padding-bottom: 10px;
+    }
+    .status {
+      padding: 15px;
+      margin: 15px 0;
+      border-radius: 6px;
+      border-left: 4px solid;
+    }
+    .status.success {
+      background: #d1fae5;
+      border-color: #10b981;
+      color: #065f46;
+    }
+    .status.error {
+      background: #fee2e2;
+      border-color: #ef4444;
+      color: #991b1b;
+    }
+    .status.info {
+      background: #dbeafe;
+      border-color: #3b82f6;
+      color: #1e40af;
+    }
+    button {
+      background: #3b82f6;
+      color: white;
+      border: none;
+      padding: 12px 24px;
+      border-radius: 6px;
+      font-size: 16px;
+      cursor: pointer;
+      margin: 10px 5px 10px 0;
+    }
+    button:hover {
+      background: #2563eb;
+    }
+    button:disabled {
+      background: #9ca3af;
+      cursor: not-allowed;
+    }
+    #log {
+      background: #1e293b;
+      color: #e2e8f0;
+      padding: 20px;
+      border-radius: 6px;
+      font-family: 'Courier New', monospace;
+      font-size: 13px;
+      max-height: 500px;
+      overflow-y: auto;
+      margin-top: 20px;
+    }
+    .log-line {
+      margin: 4px 0;
+      padding: 2px 0;
+    }
+    .log-success { color: #4ade80; }
+    .log-error { color: #f87171; }
+    .log-info { color: #60a5fa; }
+    .log-warn { color: #fbbf24; }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 15px 0;
+    }
+    th, td {
+      padding: 10px;
+      text-align: left;
+      border-bottom: 1px solid #e5e7eb;
+    }
+    th {
+      background: #f9fafb;
+      font-weight: 600;
+    }
+    .stats-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 15px;
+      margin: 20px 0;
+    }
+    .stat-card {
+      background: #f9fafb;
+      padding: 15px;
+      border-radius: 6px;
+      border-left: 3px solid #3b82f6;
+    }
+    .stat-card h3 {
+      margin: 0 0 5px 0;
+      font-size: 14px;
+      color: #6b7280;
+    }
+    .stat-card p {
+      margin: 0;
+      font-size: 24px;
+      font-weight: bold;
+      color: #1f2937;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>🗄️ Verificação do Banco de Dados SQLite</h1>
+    
+    <div class="status info">
+      <strong>ℹ️ Informação:</strong> Esta página verifica se o banco de dados SQLite foi criado corretamente.
+      Abra o console do navegador (F12) para ver logs detalhados.
+    </div>
+
+    <div id="status-container"></div>
+
+    <div style="margin: 20px 0;">
+      <button id="btn-verify" onclick="verifyDatabase()">🔍 Verificar Banco de Dados</button>
+      <button id="btn-stats" onclick="getStats()" disabled>📊 Ver Estatísticas</button>
+      <button id="btn-test" onclick="runTests()" disabled>🧪 Executar Testes</button>
+      <button id="btn-clear" onclick="clearLog()">🗑️ Limpar Log</button>
+    </div>
+
+    <div id="stats-container"></div>
+    
+    <div id="log"></div>
+  </div>
+
+  <script type="module">
+    import { initializeDatabase, getDatabaseStats, selectAll, insert, deleteFrom } from './src/database/index.ts';
+
+    let dbInitialized = false;
+
+    window.log = function(message, type = 'info') {
+      const logDiv = document.getElementById('log');
+      const line = document.createElement('div');
+      line.className = `log-line log-${type}`;
+      const timestamp = new Date().toLocaleTimeString();
+      line.textContent = `[${timestamp}] ${message}`;
+      logDiv.appendChild(line);
+      logDiv.scrollTop = logDiv.scrollHeight;
+      
+      // Also log to console
+      console[type === 'error' ? 'error' : 'log'](message);
+    }
+
+    window.clearLog = function() {
+      document.getElementById('log').innerHTML = '';
+      log('Log limpo', 'info');
+    }
+
+    window.showStatus = function(message, type) {
+      const container = document.getElementById('status-container');
+      const div = document.createElement('div');
+      div.className = `status ${type}`;
+      
+      const icon = type === 'success' ? '✅' : type === 'error' ? '❌' : 'ℹ️';
+      div.innerHTML = `<strong>${icon} ${type === 'success' ? 'Sucesso' : type === 'error' ? 'Erro' : 'Info'}:</strong> ${message}`;
+      
+      container.innerHTML = '';
+      container.appendChild(div);
+    }
+
+    window.verifyDatabase = async function() {
+      const btn = document.getElementById('btn-verify');
+      btn.disabled = true;
+      btn.textContent = '⏳ Verificando...';
+      
+      clearLog();
+      log('🚀 Iniciando verificação do banco de dados...', 'info');
+
+      try {
+        // Initialize database
+        log('📦 Inicializando banco de dados SQLite...', 'info');
+        await initializeDatabase();
+        log('✅ Banco de dados inicializado com sucesso!', 'success');
+        
+        dbInitialized = true;
+        document.getElementById('btn-stats').disabled = false;
+        document.getElementById('btn-test').disabled = false;
+
+        // Get table list
+        log('🔍 Verificando tabelas criadas...', 'info');
+        const tables = await getDatabaseStats();
+        
+        const tableCount = Object.keys(tables).length;
+        log(`✅ Total de tabelas encontradas: ${tableCount}`, 'success');
+        
+        // List all tables
+        for (const [table, count] of Object.entries(tables)) {
+          log(`  📋 Tabela '${table}': ${count} registros`, 'info');
+        }
+
+        showStatus(`Banco de dados verificado com sucesso! ${tableCount} tabelas criadas.`, 'success');
+        
+      } catch (error) {
+        log(`❌ Erro na verificação: ${error.message}`, 'error');
+        console.error('Erro detalhado:', error);
+        showStatus(`Erro ao verificar banco de dados: ${error.message}`, 'error');
+      } finally {
+        btn.disabled = false;
+        btn.textContent = '🔍 Verificar Banco de Dados';
+      }
+    }
+
+    window.getStats = async function() {
+      if (!dbInitialized) {
+        log('⚠️ Banco de dados não inicializado', 'warn');
+        return;
+      }
+
+      try {
+        log('📊 Obtendo estatísticas...', 'info');
+        const stats = await getDatabaseStats();
+        
+        const statsContainer = document.getElementById('stats-container');
+        let html = '<div class="stats-grid">';
+        
+        for (const [table, count] of Object.entries(stats)) {
+          html += `
+            <div class="stat-card">
+              <h3>${table}</h3>
+              <p>${count}</p>
+            </div>
+          `;
+        }
+        
+        html += '</div>';
+        statsContainer.innerHTML = html;
+        
+        log('✅ Estatísticas carregadas', 'success');
+      } catch (error) {
+        log(`❌ Erro ao obter estatísticas: ${error.message}`, 'error');
+      }
+    }
+
+    window.runTests = async function() {
+      if (!dbInitialized) {
+        log('⚠️ Banco de dados não inicializado', 'warn');
+        return;
+      }
+
+      const btn = document.getElementById('btn-test');
+      btn.disabled = true;
+      btn.textContent = '⏳ Testando...';
+
+      try {
+        log('🧪 Executando testes CRUD...', 'info');
+        
+        // Test INSERT
+        log('  ➕ Teste INSERT: Criando material de teste...', 'info');
+        const testId = await insert('material', {
+          data: new Date().toISOString(),
+          nome: 'Material Teste',
+          categoria: 'Teste',
+          preco_compra: 1.00,
+          preco_venda: 2.00,
+          criado_por: 'teste@sistema.com',
+          atualizado_por: 'teste@sistema.com',
+          origem_offline: 1
+        });
+        log(`  ✅ Material criado com ID: ${testId}`, 'success');
+
+        // Test SELECT
+        log('  🔍 Teste SELECT: Buscando material criado...', 'info');
+        const materials = await selectAll('material');
+        const foundMaterial = materials.find(m => m.id === testId);
+        if (foundMaterial) {
+          log(`  ✅ Material encontrado: ${foundMaterial.nome}`, 'success');
+        } else {
+          throw new Error('Material não encontrado após inserção');
+        }
+
+        // Test DELETE (cleanup)
+        log('  🗑️ Limpeza: Removendo material de teste...', 'info');
+        await deleteFrom('material', 'id = ?', [testId]);
+        log('  ✅ Material removido com sucesso', 'success');
+
+        log('✅ Todos os testes passaram!', 'success');
+        showStatus('Testes executados com sucesso!', 'success');
+
+      } catch (error) {
+        log(`❌ Erro nos testes: ${error.message}`, 'error');
+        console.error('Erro detalhado:', error);
+        showStatus(`Erro nos testes: ${error.message}`, 'error');
+      } finally {
+        btn.disabled = false;
+        btn.textContent = '🧪 Executar Testes';
+      }
+    }
+
+    // Auto-run verification on page load
+    window.addEventListener('load', () => {
+      setTimeout(() => {
+        log('👋 Página carregada. Clique em "Verificar Banco de Dados" para começar.', 'info');
+      }, 500);
+    });
+  </script>
+</body>
+</html>

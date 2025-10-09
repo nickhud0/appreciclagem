@@ -1,7 +1,6 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { HashRouter, BrowserRouter, Routes, Route } from "react-router-dom";
 import { Capacitor } from "@capacitor/core";
-import { AppInitializer } from "./components/AppInitializer";
 import Index from "./pages/Index";
 import NotFound from "./pages/NotFound";
 import Compra from "./pages/Compra";
@@ -19,6 +18,8 @@ import Vale from "./pages/Vale";
 import Pendencias from "./pages/Pendencias";
 import Configuracoes from "./pages/Configuracoes";
 import ImprimirComanda from "./pages/ImprimirComanda";
+import { Toaster } from "@/components/ui/toaster";
+import SyncIndicator from "@/components/SyncIndicator";
 
 const queryClient = new QueryClient();
 
@@ -30,8 +31,7 @@ const App = () => {
   return (
     <QueryClientProvider client={queryClient}>
       <ErrorBoundary>
-        <AppInitializer>
-          <Router>
+        <Router>
           <Routes>
             <Route path="/" element={<Index />} />
             <Route path="/compra" element={<Compra />} />
@@ -53,7 +53,8 @@ const App = () => {
             <Route path="*" element={<NotFound />} />
           </Routes>
         </Router>
-      </AppInitializer>
+        <Toaster />
+        <SyncIndicator />
       </ErrorBoundary>
     </QueryClientProvider>
   );

@@ -1,20 +1,18 @@
-import { ArrowLeft, Save, Package } from "lucide-react";
+import { ArrowLeft, Save, Package, CloudOff } from "lucide-react";
 import { Link, useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { useState } from "react";
-import { useOfflineData } from "@/hooks/useOfflineData";
-import { Material } from "@/services/database";
-import { NetworkStatus } from "@/components/NetworkStatus";
+import { useEffect, useState } from "react";
 import { useToast } from "@/hooks/use-toast";
+import { insert, executeQuery, addToSyncQueue } from "@/database";
+import { getSyncStatus } from "@/services/syncEngine";
 
 const CadastrarMaterial = () => {
   const navigate = useNavigate();
   const { toast } = useToast();
-  const { createItem, isOnline } = useOfflineData<Material>('materiais');
 
   const [formData, setFormData] = useState({
     nome: "",
@@ -25,14 +23,21 @@ const CadastrarMaterial = () => {
   });
   const [loading, setLoading] = useState(false);
 
-  const categorias = [
-    "Metais Ferrosos",
-    "Metais Não-Ferrosos", 
-    "Alumínio",
-    "Cobre",
-    "Sucata Eletrônica",
-    "Outros"
-  ];
+  const [categorias, setCategorias] = useState<string[]>([]);
+
+  useEffect(() => {
+    async function loadCategorias() {
+      try {
+        const rows = await executeQuery<{ categoria: string }>(
+          `SELECT DISTINCT categoria FROM material WHERE categoria IS NOT NULL AND categoria <> '' ORDER BY categoria`
+        );
+        setCategorias(rows.map(r => r.categoria));
+      } catch {
+        setCategorias([]);
+      }
+    }
+    void loadCategorias();
+  }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -51,22 +56,30 @@ const CadastrarMaterial = () => {
     try {
       const categoriaFinal = formData.novaCategoria.trim() || formData.categoria || "Outros";
       
-      const material: Omit<Material, 'id'> = {
-        nome: formData.nome.trim(),
-        preco_compra_kg: parseFloat(formData.preco_compra_kg),
-        preco_venda_kg: parseFloat(formData.preco_venda_kg),
-        categoria: categoriaFinal
-      };
+      const now = new Date().toISOString();
+      const status = getSyncStatus();
+      const origem_offline = status.hasCredentials && status.isOnline ? 0 : 1;
 
-      const success = await createItem(material);
+      const dataToInsert = {
+        data: now,
+        nome: formData.nome.trim(),
+        categoria: categoriaFinal,
+        preco_compra: parseFloat(formData.preco_compra_kg),
+        preco_venda: parseFloat(formData.preco_venda_kg),
+        criado_por: 'local-user',
+        atualizado_por: 'local-user',
+        origem_offline
+      } as any;
+
+      const newId = await insert('material', dataToInsert);
+
+      await addToSyncQueue('material', 'INSERT', newId, { id: newId, ...dataToInsert });
       
-      if (success) {
-        toast({
-          title: "Material cadastrado",
-          description: `${material.nome} foi ${isOnline ? 'salvo no servidor' : 'salvo localmente e será sincronizado'}`,
-        });
-        navigate("/");
-      }
+      toast({
+        title: "Material cadastrado",
+        description: `${formData.nome} foi salvo${origem_offline ? ' (offline)' : ''}`,
+      });
+      navigate("/");
     } catch (error) {
       toast({
         title: "Erro",
@@ -88,8 +101,8 @@ const CadastrarMaterial = () => {
           </Button>
           <h1 className="text-2xl font-bold text-foreground">Cadastrar Material</h1>
         </div>
-        <NetworkStatus />
       </div>
+
 
       {/* Formulário */}
       <Card className="p-6">
@@ -106,7 +119,7 @@ const CadastrarMaterial = () => {
                 id="nome"
                 value={formData.nome}
                 onChange={(e) => setFormData(prev => ({ ...prev, nome: e.target.value }))}
-                placeholder="Ex: Latinha de Alumínio"
+                placeholder="Nome do material"
                 className="mt-1"
                 required
               />

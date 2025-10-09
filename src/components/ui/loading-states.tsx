@@ -2,7 +2,7 @@
  * Componentes padronizados de loading e estados vazios
  */
 
-import { Loader2, AlertCircle, Wifi, WifiOff, RefreshCw } from "lucide-react";
+import { Loader2, AlertCircle, WifiOff, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Alert, AlertDescription } from "@/components/ui/alert";

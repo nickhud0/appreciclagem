@@ -1,461 +1,530 @@
-import { ArrowLeft, Plus, Trash2, Save, Edit, X } from "lucide-react";
-import { Link, useNavigate } from "react-router-dom";
+import { ArrowLeft, FileText, Plus, Trash2, Edit, Calculator, ShoppingCart, DollarSign } from "lucide-react";
+import { Device } from '@capacitor/device';
+import { useNavigate } from "react-router-dom";
 import { useState, useEffect } from "react";
-import { logger } from '@/utils/logger';
-import { notifyError } from '@/utils/errorHandler';
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { Separator } from "@/components/ui/separator";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
-import { getDeviceName } from "@/utils/deviceInfo";
-import { useOfflineData } from "@/hooks/useOfflineData";
-import { useComandasOffline } from "@/hooks/useComandasOffline";
-import { prefixoService } from "@/services/prefixoService";
-import { Transacao } from "@/services/database";
 import { useToast } from "@/hooks/use-toast";
-import { toYMD, formatDate } from "@/utils/formatters";
-
 import { formatCurrency } from "@/utils/formatters";
+import { insert, addToSyncQueue } from "@/database";
+import { getSyncStatus } from "@/services/syncEngine";
+import { getComandaPrefix, nextComandaSequence, buildComandaCodigo } from "@/services/settings";
+
+interface ComandaItem {
+  id: number;
+  material: string;
+  preco: number;
+  quantidade: number;
+  total: number;
+}
+
+interface Comanda {
+  itens: ComandaItem[];
+  tipo: 'compra' | 'venda';
+  total: number;
+}
 
 const ComandaAtual = () => {
-  // Agrupar estados relacionados para reduzir re-renders
-  const [comandaState, setComandaState] = useState({
-    itens: [],
-    itemEditando: null,
-    dialogOpen: false,
-    tipo: "",
-    observacao: ""
-  });
-  
   const navigate = useNavigate();
   const { toast } = useToast();
-  const { createItem } = useOfflineData<Transacao>('transacoes');
-  const { criarComanda } = useComandasOffline();
+  const [materiais, setMateriais] = useState<any[]>([]);
+  
+  const [comanda, setComanda] = useState<Comanda | null>(null);
+  const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
+  const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
+  const [selectedItem, setSelectedItem] = useState<ComandaItem | null>(null);
+  const [editQuantidade, setEditQuantidade] = useState("");
+  const [editPreco, setEditPreco] = useState("");
+  const [selectedMaterial, setSelectedMaterial] = useState<any>(null);
+  const [novaQuantidade, setNovaQuantidade] = useState("");
+  const [novoPreco, setNovoPreco] = useState("");
 
-  // Carregar comanda do localStorage ao inicializar
+  // Calculate subtotal in real-time for edit dialog
+  const calcularSubtotalEdit = () => {
+    const quantidade = parseFloat(editQuantidade) || 0;
+    const preco = parseFloat(editPreco) || 0;
+    return quantidade * preco;
+  };
+
   useEffect(() => {
     const comandaStorage = localStorage.getItem('comandaAtual');
     if (comandaStorage) {
-      const comanda = JSON.parse(comandaStorage);
-      setComandaState(prev => ({
-        ...prev,
-        itens: comanda.itens || [],
-        tipo: comanda.tipo || "",
-        observacao: comanda.observacao || ""
-      }));
+      setComanda(JSON.parse(comandaStorage));
     }
   }, []);
 
-  // Salvar comanda no localStorage sempre que houver mudança
-  useEffect(() => {
-    if (comandaState.itens.length > 0 || comandaState.tipo) {
-      const comanda = {
-        itens: comandaState.itens,
-        tipo: comandaState.tipo,
-        total: totalComanda,
-        observacao: comandaState.observacao
-      };
-      localStorage.setItem('comandaAtual', JSON.stringify(comanda));
-    }
-  }, [comandaState.itens, comandaState.tipo, comandaState.observacao]);
+  const updateComanda = (novaComanda: Comanda) => {
+    setComanda(novaComanda);
+    localStorage.setItem('comandaAtual', JSON.stringify(novaComanda));
+  };
 
-  const totalComanda = comandaState.itens.reduce((acc, item) => acc + item.total, 0);
-
-  const handleEditItem = (item) => {
-    setComandaState(prev => ({
-      ...prev,
-      itemEditando: { ...item },
-      dialogOpen: true
-    }));
+  const handleEditItem = (item: ComandaItem) => {
+    setSelectedItem(item);
+    setEditQuantidade(item.quantidade.toString());
+    setEditPreco(item.preco.toString());
+    setIsEditDialogOpen(true);
   };
 
   const handleSaveEdit = () => {
-    if (!comandaState.itemEditando) return;
-    
-    const novoTotal = comandaState.itemEditando.preco * comandaState.itemEditando.quantidade;
-    const itemAtualizado = { ...comandaState.itemEditando, total: novoTotal };
-    
-    setComandaState(prev => ({
-      ...prev,
-      itens: prev.itens.map(item => 
-        item.id === prev.itemEditando.id ? itemAtualizado : item
-      ),
-      dialogOpen: false,
-      itemEditando: null
-    }));
-  };
+    if (!selectedItem || !comanda) return;
 
-  const handleDeleteItem = (id) => {
-    setComandaState(prev => ({
-      ...prev,
-      itens: prev.itens.filter(item => item.id !== id)
-    }));
-  };
+    const novaQuantidade = parseFloat(editQuantidade) || 0;
+    const novoPreco = parseFloat(editPreco) || 0;
+    const novoTotal = novaQuantidade * novoPreco;
 
-  const handleCloseDialog = () => {
-    setComandaState(prev => ({
-      ...prev,
-      dialogOpen: false,
-      itemEditando: null
-    }));
-  };
-
-  const handleAdicionarItem = () => {
-    if (comandaState.tipo === "venda") {
-      navigate("/venda");
-    } else {
-      navigate("/compra");
-    }
-  };
-
-  // Função para obter material_id baseado no nome
-  const getMaterialIdByName = (nomeMaterial: string): number => {
-    const materialMap: { [key: string]: number } = {
-      "Alumínio Lata": 1,
-      "Alumínio Perfil": 2, 
-      "Cobre": 3,
-      "Latão": 4,
-      "Ferro": 5,
-      "Inox": 6,
-      "Bronze": 7,
-      "Chumbo": 8
+    const novaComanda = {
+      ...comanda,
+      itens: comanda.itens.map(item => 
+        item.id === selectedItem.id 
+          ? { ...item, quantidade: novaQuantidade, preco: novoPreco, total: novoTotal }
+          : item
+      )
     };
-    return materialMap[nomeMaterial] || 1;
+    novaComanda.total = novaComanda.itens.reduce((acc, item) => acc + item.total, 0);
+
+    updateComanda(novaComanda);
+    setIsEditDialogOpen(false);
+    setSelectedItem(null);
+    toast({
+      title: "Item atualizado",
+      description: "Item da comanda foi atualizado com sucesso"
+    });
+  };
+
+  const handleDeleteItem = (itemId: number) => {
+    if (!comanda) return;
+
+    const novaComanda = {
+      ...comanda,
+      itens: comanda.itens.filter(item => item.id !== itemId)
+    };
+    novaComanda.total = novaComanda.itens.reduce((acc, item) => acc + item.total, 0);
+
+    updateComanda(novaComanda);
+    toast({
+      title: "Item removido",
+      description: "Item foi removido da comanda"
+    });
+  };
+
+  const handleAddItem = () => {
+    if (!selectedMaterial || !comanda) return;
+
+    const quantidade = parseFloat(novaQuantidade) || 0;
+    const preco = parseFloat(novoPreco) || 0;
+    const total = quantidade * preco;
+
+    const novoItem: ComandaItem = {
+      id: Date.now(),
+      material: selectedMaterial.nome,
+      preco: preco,
+      quantidade: quantidade,
+      total: total
+    };
+
+    const novaComanda = {
+      ...comanda,
+      itens: [...comanda.itens, novoItem]
+    };
+    novaComanda.total = novaComanda.itens.reduce((acc, item) => acc + item.total, 0);
+
+    updateComanda(novaComanda);
+    setIsAddDialogOpen(false);
+    setSelectedMaterial(null);
+    setNovaQuantidade("");
+    setNovoPreco("");
+    toast({
+      title: "Item adicionado",
+      description: `${selectedMaterial.nome} foi adicionado à comanda`
+    });
+  };
+
+  const handleLimparComanda = () => {
+    setComanda(null);
+    localStorage.removeItem('comandaAtual');
+    toast({
+      title: "Comanda limpa",
+      description: "Todos os itens foram removidos da comanda"
+    });
   };
 
   const handleFinalizarComanda = async () => {
-    logger.debug('🚀 Finalizando comanda com', comandaState.itens.length, 'itens');
-    
-    // Salvar cada item da comanda como transação individual
-    for (const item of comandaState.itens) {
-      const materialId = getMaterialIdByName(item.material);
-      
-      const transacao: Omit<Transacao, 'id'> = {
-        tipo: comandaState.tipo as 'compra' | 'venda',
-        material_id: materialId,
-        peso: item.quantidade,
-        valor_total: item.total,
-        observacoes: comandaState.observacao || undefined,
-        created_at: toYMD(new Date())
-      };
+    if (!comanda || comanda.itens.length === 0) return;
 
-      logger.debug('💾 Salvando transação:', transacao);
-      await createItem(transacao);
-    }
-    
-    // Gerar código único da comanda usando o sistema de prefixos
-    const { prefixo, numeroLocal, codigoCompleto } = await prefixoService.gerarProximoNumeroComanda();
-    
-    // Criar comanda usando o sistema offline-first
-    const agora = new Date();
-    const comandaParaSalvar = {
-      id: Date.now(), // ID temporário único
-      numero: codigoCompleto, // Código no formato PREFIXO-NUMERO
-      prefixo_dispositivo: prefixo,
-      numero_local: numeroLocal,
-      tipo: comandaState.tipo as 'compra' | 'venda',
-      total: totalComanda,
-      status: 'finalizada' as const,
-      cliente: comandaState.tipo === 'venda' ? 'Cliente' : 'Fornecedor',
-      dispositivo: getDeviceName(),
-      observacoes: comandaState.observacao || '',
-      itens: comandaState.itens.map((item, index) => ({
-        id: index + 1,
-        material: item.material,
-        quantidade: item.quantidade,
-        preco: item.preco,
-        total: item.total
-      })),
-      created_at: toYMD(agora),
-      updated_at: toYMD(agora)
-    };
+    try {
+      const status = getSyncStatus();
+      const origem_offline = status.hasCredentials && status.isOnline ? 0 : 1;
+      const now = new Date().toISOString();
+      // Identify the device for attribution
+      let deviceName = 'Dispositivo Local';
+      try {
+        const info = await Device.getInfo();
+        deviceName = (info as any)?.name || (info as any)?.model || 'Dispositivo Local';
+      } catch {}
+      // Create a local synthetic comanda id and codigo to correlate pending inserts in Historico
+      const localComandaId = Date.now();
+      // Build codigo using saved prefix and per-prefix sequence
+      const prefix = getComandaPrefix();
+      const sequence = nextComandaSequence(prefix);
+      const codigo = `${prefix || ''}${sequence}`;
 
-    logger.debug('💾 Salvando comanda completa:', comandaParaSalvar);
-    
-    // Usar o sistema de comandas offline-first
-    const success = await criarComanda(comandaParaSalvar);
-    
-    if (!success) {
+      // Enqueue the comanda itself with its tipo so Historico can show "Tipo: Compra/Venda"
+      try {
+        await addToSyncQueue('comanda', 'INSERT', String(localComandaId), {
+          // optional id omitted to allow server to assign; record_id links pending view
+          data: now,
+          codigo,
+          tipo: comanda.tipo,
+          observacoes: null,
+          total: comanda.total,
+          criado_por: deviceName,
+          atualizado_por: 'local-user'
+        });
+        // Verification log (remove later)
+        // eslint-disable-next-line no-console
+        console.log('Comanda criada', deviceName);
+      } catch {}
+
+      // Enfileirar cada item diretamente na tabela 'item' usando codigo como vínculo
+      for (const it of comanda.itens) {
+        try {
+          await addToSyncQueue('item', 'INSERT', '', {
+            data: now,
+            codigo, // chave de ligação entre comanda e itens
+            // material id pode não estar disponível offline; incluir fallbacks
+            material: null,
+            material_nome: it.material,
+            categoria: null,
+            preco_kg: it.preco,
+            kg_total: it.quantidade,
+            valor_total: it.total,
+            criado_por: deviceName,
+            atualizado_por: 'local-user'
+          });
+        } catch {}
+      }
+
       toast({
-        title: "Erro",
-        description: "Erro ao salvar a comanda",
-        variant: "destructive"
+        title: "Comanda finalizada",
+        description: `Comanda de ${comanda.tipo} finalizada com total de ${formatCurrency(comanda.total)}`
       });
-      return;
+
+      handleLimparComanda();
+    } catch (error) {
+      toast({ title: 'Erro ao finalizar comanda', variant: 'destructive' });
     }
-
-    // Resetar estado da comanda atual para vazio
-    setComandaState({
-      itens: [],
-      itemEditando: null,
-      dialogOpen: false,
-      tipo: "",
-      observacao: ""
-    });
-    localStorage.removeItem('comandaAtual');
-    
-    toast({
-      title: "Sucesso",
-      description: `${comandaState.tipo === 'venda' ? 'Venda' : 'Compra'} ${codigoCompleto} finalizada com sucesso!`
-    });
-    
-    navigate("/");
   };
 
-  const handleCancelarComanda = () => {
-    // Resetar estado da comanda atual para vazio
-    setComandaState({
-      itens: [],
-      itemEditando: null,
-      dialogOpen: false,
-      tipo: "",
-      observacao: ""
-    });
-    localStorage.removeItem('comandaAtual');
-    navigate("/");
-  };
-
-  return (
-    <div className="min-h-screen bg-background p-4">
-      {/* Header */}
-      <div className="flex items-center mb-6">
-          <Button variant="ghost" size="sm" className="mr-3" onClick={() => navigate(-1)}>
-            <ArrowLeft className="h-4 w-4" />
-          </Button>
-        <h1 className="text-2xl font-bold text-foreground">Comanda Atual</h1>
-      </div>
-
-      {/* Info da Comanda */}
-      <Card className="mb-6 p-4 shadow-lg">
-        <div className="flex justify-between items-center">
-          <div>
-            <h2 className="text-lg font-semibold text-foreground">
-              Nova Comanda
-            </h2>
-            <p className="text-sm text-muted-foreground">
-              {comandaState.tipo === "venda" ? "Venda" : "Compra"} • Iniciada às {new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
-            </p>
-          </div>
-          <div className="text-right">
-            <p className="text-sm text-muted-foreground">Total</p>
-             <p className="text-3xl font-bold text-success">
-               {formatCurrency(totalComanda)}
-             </p>
+  if (!comanda || comanda.itens.length === 0) {
+    return (
+      <div className="min-h-screen bg-background">
+        {/* Header */}
+        <div className="sticky top-0 bg-background border-b p-3 z-10">
+          <div className="flex items-center">
+            <Button variant="ghost" size="sm" className="mr-2" onClick={() => navigate(-1)}>
+              <ArrowLeft className="h-4 w-4" />
+            </Button>
+            <h1 className="text-lg font-bold text-foreground">Comanda Atual</h1>
           </div>
         </div>
-      </Card>
 
-      {/* Itens da Comanda */}
-      <div className="space-y-2 mb-4">
-        {comandaState.itens.map((item) => (
-          <Card key={item.id} className="p-3 shadow-md">
-            <div className="flex justify-between items-start mb-2">
-              <div className="flex-1">
-                <h3 className="font-semibold text-foreground text-base">
-                  {item.material}
-                </h3>
-                 <p className="text-xs text-muted-foreground">
-                   {formatCurrency(item.preco)} por kg
-                 </p>
-                <p className="text-sm font-medium text-foreground">
-                  Quantidade: {item.quantidade} kg
-                </p>
-              </div>
-              <div className="flex space-x-3">
-                <Button 
-                  variant="ghost" 
-                  size="sm" 
-                  className="text-primary hover:bg-primary/10 h-9 w-9 p-0"
-                  onClick={() => handleEditItem(item)}
-                >
-                  <Edit className="h-4 w-4" />
-                </Button>
-                <Button 
-                  variant="ghost" 
-                  size="sm" 
-                  className="text-destructive hover:bg-destructive/10 h-9 w-9 p-0"
-                  onClick={() => handleDeleteItem(item.id)}
-                >
-                  <Trash2 className="h-4 w-4" />
-                </Button>
-              </div>
-            </div>
-            
-            <div className="flex justify-end">
-               <p className="font-bold text-lg text-foreground">
-                 {formatCurrency(item.total)}
-               </p>
+        {/* Conteúdo vazio */}
+        <div className="p-3">
+          <Card className="p-6 text-center">
+            <FileText className="h-12 w-12 text-muted-foreground mx-auto mb-3" />
+            <h2 className="text-lg font-semibold mb-2">Nenhuma comanda ativa</h2>
+            <p className="text-muted-foreground mb-4 text-sm">
+              Adicione itens nas páginas de compra ou venda para começar uma comanda.
+            </p>
+            <div className="flex flex-col gap-2">
+              <Button onClick={() => navigate('/compra')} className="w-full">
+                <ShoppingCart className="h-4 w-4 mr-2" />
+                Nova Compra
+              </Button>
+              <Button variant="outline" onClick={() => navigate('/venda')} className="w-full">
+                <DollarSign className="h-4 w-4 mr-2" />
+                Nova Venda
+              </Button>
             </div>
           </Card>
-        ))}
+        </div>
       </div>
+    );
+  }
 
-      {/* Botões para Adicionar Item */}
-      {comandaState.itens.length === 0 ? (
-        // Quando a comanda está vazia, mostrar dois botões para escolher tipo
-        <Card className="mb-4 p-3 bg-gradient-to-r from-accent to-accent/80 border-0 shadow-md">
-          <div className="grid grid-cols-2 gap-3">
-            <Button 
-              variant="ghost" 
-              className="h-10 text-accent-foreground hover:bg-white/10"
-              onClick={() => navigate("/compra")}
-            >
-              <Plus className="mr-2 h-4 w-4" />
-              Compra
+  return (
+    <div className="min-h-screen bg-background">
+      {/* Header - Responsivo */}
+      <div className="sticky top-0 bg-background border-b p-3 z-10">
+        <div className="flex items-center justify-between mb-3">
+          <div className="flex items-center">
+            <Button variant="ghost" size="sm" className="mr-2" onClick={() => navigate(-1)}>
+              <ArrowLeft className="h-4 w-4" />
             </Button>
-            <Button 
-              variant="ghost" 
-              className="h-10 text-accent-foreground hover:bg-white/10"
-              onClick={() => navigate("/venda")}
-            >
-              <Plus className="mr-2 h-4 w-4" />
-              Venda
-            </Button>
-          </div>
-        </Card>
-      ) : (
-        // Quando já tem itens, mostrar botão específico do tipo da comanda
-        <Card className="mb-4 p-3 bg-gradient-to-r from-accent to-accent/80 border-0 shadow-md">
-          <Button 
-            variant="ghost" 
-            className="w-full h-10 text-accent-foreground hover:bg-white/10"
-            onClick={handleAdicionarItem}
-          >
-            <Plus className="mr-2 h-4 w-4" />
-            Adicionar {comandaState.tipo === "venda" ? "Material para Venda" : "Material para Compra"}
-          </Button>
-        </Card>
-      )}
-
-      {/* Resumo e Ações */}
-      <Card className="p-4 shadow-lg">
-        <div className="space-y-4">
-           <div className="flex justify-between items-center">
-             <span className="text-lg">Subtotal:</span>
-             <span className="text-lg font-semibold">{formatCurrency(totalComanda)}</span>
-           </div>
-          
-          <Separator />
-          
-           <div className="flex justify-between items-center">
-             <span className="text-xl font-bold">Total:</span>
-             <span className="text-xl font-bold text-success">{formatCurrency(totalComanda)}</span>
-           </div>
-          
-          {/* Campo de Observação */}
-          <div className="pt-2">
-            <Label htmlFor="observacao" className="text-sm font-medium">
-              Observação (Opcional)
-            </Label>
-            <Textarea
-              id="observacao"
-              placeholder="Adicione uma observação para esta comanda..."
-              value={comandaState.observacao}
-              onChange={(e) => setComandaState(prev => ({ ...prev, observacao: e.target.value }))}
-              className="mt-1 min-h-[80px] resize-none"
-            />
-          </div>
-
-          <div className="space-y-2 pt-4">
-            <Button 
-              className="w-full h-12 bg-gradient-to-r from-success to-success/80 border-0 shadow-md"
-              onClick={handleFinalizarComanda}
-            >
-              <Save className="mr-2 h-5 w-5" />
-              Finalizar Comanda
-            </Button>
-            
-            <Button 
-              variant="outline" 
-              className="w-full h-12 text-destructive border-destructive hover:bg-destructive/10"
-              onClick={handleCancelarComanda}
-            >
-              <X className="mr-2 h-5 w-5" />
-              Cancelar Comanda
-            </Button>
+            <h1 className="text-lg font-bold text-foreground">Comanda Atual</h1>
           </div>
         </div>
-      </Card>
+        
+        {/* Botões de ação - Responsivos */}
+        <div className="flex gap-2">
+          <Button 
+            variant="outline" 
+            size="sm" 
+            onClick={() => navigate(comanda.tipo === "compra" ? "/compra" : "/venda")}
+            className="flex-1"
+          >
+            Adicionar
+          </Button>
+          <Button 
+            variant="outline" 
+            size="sm" 
+            onClick={handleLimparComanda}
+            className="flex-1 bg-red-100 hover:bg-red-200 text-red-700 border-red-300 hover:border-red-400"
+          >
+            Cancelar
+          </Button>
+        </div>
+      </div>
 
-      {/* Dialog para Editar Item */}
-      <Dialog open={comandaState.dialogOpen} onOpenChange={(open) => setComandaState(prev => ({ ...prev, dialogOpen: open }))}>
-        <DialogContent className="sm:max-w-md">
+      {/* Conteúdo Principal */}
+      <div className="p-3 pb-24">
+        {/* Tipo da Comanda */}
+        <Card className="p-4 mb-4 bg-primary/5 border border-primary/20">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              {comanda.tipo === 'compra' ? (
+                <ShoppingCart className="h-5 w-5 text-primary" />
+              ) : (
+                <DollarSign className="h-5 w-5 text-green-600" />
+              )}
+              <span className="text-base font-semibold text-foreground">
+                Comanda de {comanda.tipo === 'compra' ? 'Compra' : 'Venda'}
+              </span>
+            </div>
+            <span className="text-sm text-muted-foreground font-medium">
+              {comanda.itens.length} item{comanda.itens.length !== 1 ? 's' : ''}
+            </span>
+          </div>
+        </Card>
+
+        {/* Lista de Itens - Responsiva */}
+        <div className="space-y-4 mb-6">
+          {comanda.itens.map((item) => (
+            <Card key={item.id} className="p-4">
+              <div className="space-y-3">
+                {/* Nome do material */}
+                <div className="flex justify-between items-start">
+                  <h3 className="font-semibold text-foreground text-base leading-tight flex-1 pr-3">
+                    {item.material}
+                  </h3>
+                  <div className="flex gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => handleEditItem(item)}
+                      className="h-9 w-9 p-0"
+                    >
+                      <Edit className="h-4 w-4" />
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => handleDeleteItem(item.id)}
+                      className="h-9 w-9 p-0 text-destructive hover:text-destructive"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  </div>
+                </div>
+                
+                {/* Detalhes do item */}
+                <div className="grid grid-cols-2 gap-4 text-sm">
+                  <div className="bg-muted/30 p-2 rounded">
+                    <span className="text-muted-foreground text-xs block">Quantidade:</span>
+                    <span className="font-semibold text-base">{item.quantidade}kg</span>
+                  </div>
+                  <div className="bg-muted/30 p-2 rounded">
+                    <span className="text-muted-foreground text-xs block">Preço/kg:</span>
+                    <span className="font-semibold text-base">{formatCurrency(item.preco)}</span>
+                  </div>
+                </div>
+                
+                {/* Total do item */}
+                <div className="flex justify-between items-center pt-2 border-t bg-primary/5 p-3 rounded">
+                  <span className="text-sm text-muted-foreground font-medium">Total do Item:</span>
+                  <span className="font-bold text-lg text-primary">{formatCurrency(item.total)}</span>
+                </div>
+              </div>
+            </Card>
+          ))}
+        </div>
+
+        {/* Total da Comanda */}
+        <Card className="p-4 bg-primary/10 border-2 border-primary/20 mb-4">
+          <div className="flex justify-between items-center">
+            <span className="text-base font-semibold text-foreground">Total da Comanda:</span>
+            <span className="text-2xl font-bold text-primary">
+              {formatCurrency(comanda.total)}
+            </span>
+          </div>
+        </Card>
+      </div>
+
+      {/* Botão Finalizar - Fixo na parte inferior */}
+      <div className="fixed bottom-0 left-0 right-0 bg-background border-t-2 border-primary/20 p-4 z-20">
+        <Button 
+          onClick={handleFinalizarComanda} 
+          className="w-full h-14 bg-green-600 hover:bg-green-700 text-white font-bold text-base"
+          size="lg"
+        >
+          <Calculator className="h-6 w-6 mr-3" />
+          Finalizar Comanda
+        </Button>
+      </div>
+
+      {/* Dialog de Edição */}
+      <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
+        <DialogContent className="max-w-sm mx-auto">
           <DialogHeader>
-            <DialogTitle>Editar Material</DialogTitle>
+            <DialogTitle className="text-center">Editar Item</DialogTitle>
           </DialogHeader>
           
-          {comandaState.itemEditando && (
-            <div className="space-y-4 pt-4">
+          {selectedItem && (
+            <div className="space-y-4">
               <div>
                 <Label htmlFor="material">Material</Label>
-                <Input
+                <Input 
                   id="material"
-                  value={comandaState.itemEditando.material}
-                  onChange={(e) => setComandaState(prev => ({ 
-                    ...prev, 
-                    itemEditando: { ...prev.itemEditando, material: e.target.value }
-                  }))}
-                  className="mt-1"
+                  value={selectedItem.material}
+                  disabled
+                  className="bg-muted"
                 />
               </div>
-
+              
               <div>
-                <Label htmlFor="preco">Preço por kg (R$)</Label>
-                <Input
+                <Label htmlFor="quantidade">Quantidade (kg)</Label>
+                <Input 
+                  id="quantidade"
+                  type="number"
+                  step="0.01"
+                  value={editQuantidade}
+                  onChange={(e) => setEditQuantidade(e.target.value)}
+                  placeholder="Digite a quantidade"
+                />
+              </div>
+              
+              <div>
+                <Label htmlFor="preco">Preço por kg</Label>
+                <Input 
                   id="preco"
                   type="number"
                   step="0.01"
-                  value={comandaState.itemEditando.preco}
-                  onChange={(e) => setComandaState(prev => ({ 
-                    ...prev, 
-                    itemEditando: { ...prev.itemEditando, preco: parseFloat(e.target.value) || 0 }
-                  }))}
-                  className="mt-1"
+                  value={editPreco}
+                  onChange={(e) => setEditPreco(e.target.value)}
+                  placeholder="Digite o preço"
                 />
               </div>
-
-              <div>
-                <Label htmlFor="quantidade">Quantidade (kg)</Label>
-                <Input
-                  id="quantidade"
-                  type="number"
-                  step="0.1"
-                  value={comandaState.itemEditando.quantidade}
-                  onChange={(e) => setComandaState(prev => ({ 
-                    ...prev, 
-                    itemEditando: { ...prev.itemEditando, quantidade: parseFloat(e.target.value) || 0 }
-                  }))}
-                  className="mt-1"
-                />
+              
+              {/* Subtotal Section */}
+              <div className="bg-green-50 border border-green-200 rounded-lg p-4 mt-4">
+                <div className="flex items-center justify-between">
+                  <p className="text-lg text-green-700 font-semibold">Subtotal</p>
+                  <p className="text-3xl font-black text-green-800">
+                    {formatCurrency(calcularSubtotalEdit())}
+                  </p>
+                </div>
               </div>
-
-              <div className="p-3 bg-accent/10 rounded-lg">
-                 <p className="text-sm font-medium">
-                   Total: {formatCurrency(comandaState.itemEditando.preco * comandaState.itemEditando.quantidade)}
-                 </p>
-              </div>
-
-              <div className="flex space-x-2 pt-4">
-                <Button 
-                  onClick={handleSaveEdit}
-                  className="flex-1 bg-gradient-to-r from-success to-success/80"
-                >
-                  <Save className="mr-2 h-4 w-4" />
+              
+              <div className="flex flex-col gap-2">
+                <Button onClick={handleSaveEdit} className="w-full">
                   Salvar
                 </Button>
-                <Button 
-                  variant="outline" 
-                  onClick={handleCloseDialog}
-                  className="flex-1"
-                >
+                <Button variant="outline" onClick={() => setIsEditDialogOpen(false)} className="w-full">
                   Cancelar
                 </Button>
               </div>
             </div>
           )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Dialog de Adicionar Item */}
+      <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
+        <DialogContent className="max-w-sm mx-auto">
+          <DialogHeader>
+            <DialogTitle className="text-center">Adicionar Item</DialogTitle>
+          </DialogHeader>
+          
+          <div className="space-y-4">
+            <div>
+              <Label htmlFor="materialSelect">Material</Label>
+              <select
+                id="materialSelect"
+                value={selectedMaterial?.id || ""}
+                onChange={(e) => {
+                  const material = materiais.find(m => m.id === parseInt(e.target.value));
+                  setSelectedMaterial(material);
+                  if (material) {
+                    setNovoPreco(comanda.tipo === 'compra' ? material.preco_compra_kg.toString() : material.preco_venda_kg.toString());
+                  }
+                }}
+                className="w-full mt-1 p-3 border border-input rounded-md bg-background text-sm"
+              >
+                <option value="">Selecione um material</option>
+                {materiais.map(material => (
+                  <option key={material.id} value={material.id}>
+                    {material.nome}
+                  </option>
+                ))}
+              </select>
+            </div>
+            
+            <div>
+              <Label htmlFor="novaQuantidade">Quantidade (kg)</Label>
+              <Input 
+                id="novaQuantidade"
+                type="number"
+                step="0.01"
+                value={novaQuantidade}
+                onChange={(e) => setNovaQuantidade(e.target.value)}
+                placeholder="Digite a quantidade"
+                className="p-3"
+              />
+            </div>
+            
+            <div>
+              <Label htmlFor="novoPreco">Preço por kg</Label>
+              <Input 
+                id="novoPreco"
+                type="number"
+                step="0.01"
+                value={novoPreco}
+                onChange={(e) => setNovoPreco(e.target.value)}
+                placeholder="Digite o preço"
+                className="p-3"
+              />
+            </div>
+            
+            <div className="flex flex-col gap-2">
+              <Button 
+                onClick={handleAddItem} 
+                disabled={!selectedMaterial || !novaQuantidade}
+                className="w-full"
+              >
+                Adicionar
+              </Button>
+              <Button 
+                variant="outline" 
+                onClick={() => setIsAddDialogOpen(false)} 
+                className="w-full"
+              >
+                Cancelar
+              </Button>
+            </div>
+          </div>
         </DialogContent>
       </Dialog>
     </div>

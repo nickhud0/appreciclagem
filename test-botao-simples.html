@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Teste do Botão - Simples</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        button {
+            background: #007bff;
+            color: white;
+            border: none;
+            padding: 15px 30px;
+            font-size: 16px;
+            border-radius: 5px;
+            cursor: pointer;
+            margin: 10px 0;
+            width: 100%;
+        }
+        button:hover {
+            background: #0056b3;
+        }
+        .status {
+            margin: 20px 0;
+            padding: 15px;
+            background: #e9ecef;
+            border-radius: 5px;
+            border-left: 4px solid #007bff;
+        }
+        .report {
+            margin: 20px 0;
+            padding: 15px;
+            background: #f8f9fa;
+            border-radius: 5px;
+            border: 1px solid #dee2e6;
+            white-space: pre-wrap;
+            font-family: monospace;
+        }
+        .success {
+            background: #d4edda;
+            border-left-color: #28a745;
+            color: #155724;
+        }
+        .error {
+            background: #f8d7da;
+            border-left-color: #dc3545;
+            color: #721c24;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🧪 Teste do Botão - Versão Simples</h1>
+        
+        <div class="status" id="status">
+            Status: Pronto para testar
+        </div>
+        
+        <button onclick="testarBotao()">
+            🖱️ Gerar Relatório Detalhado
+        </button>
+        
+        <div class="report" id="report" style="display: none;">
+            <!-- Relatório aparecerá aqui -->
+        </div>
+        
+        <div class="status" id="logs">
+            <strong>Logs:</strong><br>
+            <div id="logContent">Aguardando clique no botão...</div>
+        </div>
+    </div>
+
+    <script>
+        function testarBotao() {
+            console.log('🔍 BOTÃO CLICADO! FUNCIONANDO!');
+            
+            // Atualizar status
+            document.getElementById('status').innerHTML = 'Status: <strong>Botão clicado com sucesso!</strong>';
+            document.getElementById('status').className = 'status success';
+            
+            // Adicionar log
+            const logContent = document.getElementById('logContent');
+            const timestamp = new Date().toLocaleString('pt-BR');
+            logContent.innerHTML += `<br>✅ [${timestamp}] Botão clicado com sucesso!`;
+            
+            // Gerar relatório
+            const reportContent = `# RELATÓRIO DE TESTE
+
+Botão funcionando perfeitamente!
+
+Data: ${new Date().toLocaleString('pt-BR')}
+Status: Botão clicado com sucesso!
+Timestamp: ${new Date().toISOString()}
+
+## 🎉 RESULTADO DO TESTE
+
+- Botão clicado: ✅ Sim
+- Função executada: ✅ Sim  
+- Relatório gerado: ✅ Sim
+- Relatório exibido: ✅ Sim
+
+## 💡 CONCLUSÃO
+
+O botão está funcionando perfeitamente!
+Este é um teste simples para verificar se o problema
+está no botão em si ou em alguma dependência do React.
+
+---
+*Teste executado com sucesso - Botão funcionando 100%*`;
+            
+            // Mostrar relatório
+            const reportDiv = document.getElementById('report');
+            reportDiv.textContent = reportContent;
+            reportDiv.style.display = 'block';
+            
+            // Adicionar log final
+            logContent.innerHTML += `<br>🎉 [${new Date().toLocaleString('pt-BR')}] Relatório gerado e exibido com sucesso!`;
+            
+            // Mostrar alerta
+            alert('BOTÃO CLICADO! FUNCIONANDO!\n\nRelatório gerado com sucesso!');
+        }
+        
+        // Log inicial
+        console.log('🧪 Página de teste carregada');
+        console.log('🖱️ Clique no botão para testar');
+    </script>
+</body>
+</html>
