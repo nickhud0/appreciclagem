@@ -1,15 +1,16 @@
-import { ArrowLeft, Search, Edit, List, Plus, CloudOff } from "lucide-react";
+import { ArrowLeft, Search, Edit3, List, Plus, CloudOff, Filter, Check } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { useEffect, useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
 import { formatCurrency } from "@/utils/formatters";
 import { selectAll, update as dbUpdate } from "@/database";
 import { getSyncStatus } from "@/services/syncEngine";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 
 const TabelaPrecos = () => {
   const navigate = useNavigate();
@@ -20,6 +21,8 @@ const TabelaPrecos = () => {
   const [busca, setBusca] = useState("");
   const [categoriaSelecionada, setCategoriaSelecionada] = useState("Todas");
   const { toast } = useToast();
+  const [isFilterDialogOpen, setIsFilterDialogOpen] = useState(false);
+  const [categoriaSearch, setCategoriaSearch] = useState("");
   
   const [materiais, setMateriais] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -47,13 +50,28 @@ const TabelaPrecos = () => {
 
   // Obter categorias únicas
   const categorias = ["Todas", ...Array.from(new Set(materiais.map(m => m.categoria || "Outros")))];
+  const categoriasFiltradas = useMemo(
+    () => categorias.filter((c) => c.toLowerCase().includes(categoriaSearch.toLowerCase())),
+    [categorias, categoriaSearch]
+  );
 
   const handleEditClick = (material: any) => {
     setSelectedMaterial(material);
-    setNovoPrecoVenda(material.preco_venda_kg?.toString() || "0");
-    setNovoPrecoCompra(material.preco_compra_kg?.toString() || "0");
+    const venda = Number(material.preco_venda);
+    const compra = Number(material.preco_compra);
+    setNovoPrecoVenda(Number.isFinite(venda) && venda > 0 ? String(venda) : "");
+    setNovoPrecoCompra(Number.isFinite(compra) && compra > 0 ? String(compra) : "");
     setIsEditDialogOpen(true);
   };
+
+  useEffect(() => {
+    if (selectedMaterial && isEditDialogOpen) {
+      const venda = Number(selectedMaterial.preco_venda);
+      const compra = Number(selectedMaterial.preco_compra);
+      setNovoPrecoVenda(Number.isFinite(venda) && venda > 0 ? String(venda) : "");
+      setNovoPrecoCompra(Number.isFinite(compra) && compra > 0 ? String(compra) : "");
+    }
+  }, [selectedMaterial, isEditDialogOpen]);
 
   const handleSaveEdit = async () => {
     if (!selectedMaterial) return;
@@ -131,6 +149,17 @@ const TabelaPrecos = () => {
           </Button>
           <h1 className="text-2xl font-bold text-foreground">Tabela de Preços</h1>
         </div>
+        <div className="flex items-center gap-2">
+          <Button
+            variant="ghost"
+            size="icon"
+            className="hover:bg-accent/20"
+            onClick={() => setIsFilterDialogOpen(true)}
+            aria-label="Abrir filtro de categorias"
+          >
+            <Filter className="h-5 w-5 text-primary" />
+          </Button>
+        </div>
       </div>
 
       {/* Busca */}
@@ -144,28 +173,47 @@ const TabelaPrecos = () => {
         />
       </div>
 
-      {/* Filtros */}
-      <div className="flex gap-4 mb-6">
-        <div className="flex-1">
-          <Label htmlFor="categoria">Categoria</Label>
-          <select
-            id="categoria"
-            value={categoriaSelecionada}
-            onChange={(e) => setCategoriaSelecionada(e.target.value)}
-            className="w-full mt-1 p-2 border border-input rounded-md bg-background"
-          >
-            {categorias.map(categoria => (
-              <option key={categoria} value={categoria}>
-                {categoria}
-              </option>
+      {/* Filtro por categoria (em popup) */}
+      <Dialog open={isFilterDialogOpen} onOpenChange={setIsFilterDialogOpen}>
+        <DialogContent className="rounded-2xl shadow-xl p-4 bg-background max-w-sm mx-auto">
+          <DialogHeader>
+            <DialogTitle className="text-base sm:text-lg font-bold text-foreground">Filtrar por Categoria</DialogTitle>
+          </DialogHeader>
+          <div className="mt-2">
+            <Label htmlFor="buscaCategoria" className="text-muted-foreground">Buscar</Label>
+            <Input
+              id="buscaCategoria"
+              placeholder="Digite para filtrar categorias..."
+              value={categoriaSearch}
+              onChange={(e) => setCategoriaSearch(e.target.value)}
+              className="mt-1"
+            />
+          </div>
+          <div className="space-y-2 mt-3">
+            {categoriasFiltradas.map((cat) => (
+              <Button
+                key={cat}
+                variant={categoriaSelecionada === cat ? "secondary" : "ghost"}
+                className="w-full justify-start rounded-lg text-left text-sm sm:text-base"
+                onClick={() => {
+                  setCategoriaSelecionada(cat);
+                  setIsFilterDialogOpen(false);
+                }}
+              >
+                {cat}
+                {categoriaSelecionada === cat && <Check className="ml-auto h-4 w-4 text-primary" />}
+              </Button>
             ))}
-          </select>
-        </div>
-      </div>
+          </div>
+          <DialogFooter>
+            <Button onClick={() => setIsFilterDialogOpen(false)} className="w-full mt-3">Fechar</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Lista de Materiais */}
       {materiaisFiltrados.length === 0 ? (
-        <Card className="p-8 text-center">
+        <Card className="p-8 text-center rounded-xl shadow-sm">
           <List className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
           <h3 className="text-lg font-semibold mb-2">Nenhum material encontrado</h3>
           <p className="text-muted-foreground mb-4">
@@ -182,41 +230,45 @@ const TabelaPrecos = () => {
           )}
         </Card>
       ) : (
-        <div className="space-y-4">
+        <div className="grid grid-cols-1 gap-3 sm:gap-4">
           {materiaisFiltrados.map((material) => (
-            <Card key={material.id} className="p-4">
+            <Card key={material.id} className="bg-background shadow-sm rounded-xl p-3 sm:p-4 border border-border/20 hover:bg-accent/5 transition-colors flex flex-col gap-1.5 sm:gap-2">
               <div className="flex items-center justify-between">
-                <div className="flex-1">
-                  <div className="flex items-center gap-3 mb-2">
-                    <h3 className="font-semibold text-foreground">{material.nome}</h3>
-                    <span className="text-xs bg-primary/10 text-primary px-2 py-1 rounded">
-                      {material.categoria}
-                    </span>
-                    {material.origem_offline === 1 && (
-                      <span className="inline-flex items-center text-[10px] text-orange-700 bg-orange-100 border border-orange-200 px-1.5 py-0.5 rounded">
-                        <CloudOff className="h-3 w-3 mr-1" /> pendente
-                      </span>
-                    )}
-                  </div>
-                  <div className="grid grid-cols-2 gap-4 text-sm">
-                    <div>
-                      <span className="text-muted-foreground">Compra:</span>
-                      <span className="ml-2 font-medium">{formatCurrency(material.preco_compra)}/kg</span>
-                    </div>
-                    <div>
-                      <span className="text-muted-foreground">Venda:</span>
-                      <span className="ml-2 font-medium text-green-600">{formatCurrency(material.preco_venda)}/kg</span>
-                    </div>
-                  </div>
+                <div className="flex items-center gap-2 min-w-0">
+                  <h3 className="text-lg sm:text-xl font-semibold text-foreground truncate" title={material.nome}>
+                    {material.nome}
+                  </h3>
+                  {material.origem_offline === 1 && (
+                    <CloudOff className="h-4 w-4 text-yellow-500 shrink-0" title="Aguardando sincronização" />
+                  )}
                 </div>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => handleEditClick(material)}
-                >
-                  <Edit className="h-4 w-4 mr-2" />
-                  Editar
-                </Button>
+              </div>
+              <p className="text-sm sm:text-base text-muted-foreground">{material.categoria}</p>
+              <div className="flex items-center justify-between mt-1">
+                <div className="flex flex-col leading-tight space-y-0.5">
+                  <p className="text-base sm:text-lg font-bold text-primary tabular-nums">
+                    {formatCurrency(material.preco_venda || 0)}/kg
+                  </p>
+                  <p className="text-sm sm:text-base font-medium text-foreground tabular-nums">
+                    {formatCurrency(material.preco_compra || 0)}/kg
+                  </p>
+                </div>
+                <TooltipProvider>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="hover:bg-accent/20 min-w-[36px] min-h-[36px]"
+                        onClick={() => handleEditClick(material)}
+                        aria-label="Editar material"
+                      >
+                        <Edit3 className="h-5 w-5 text-primary" />
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent>Editar material</TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
               </div>
             </Card>
           ))}
@@ -243,26 +295,26 @@ const TabelaPrecos = () => {
               </div>
               
               <div>
-                <Label htmlFor="precoCompra">Preço de Compra (R$/kg)</Label>
+                <Label htmlFor="precoCompra">Preço de compra</Label>
                 <Input 
                   id="precoCompra"
                   type="number"
                   step="0.01"
                   value={novoPrecoCompra}
                   onChange={(e) => setNovoPrecoCompra(e.target.value)}
-                  placeholder="Digite o preço de compra"
+                  placeholder="Digite o valor"
                 />
               </div>
               
               <div>
-                <Label htmlFor="precoVenda">Preço de Venda (R$/kg)</Label>
+                <Label htmlFor="precoVenda">Preço de venda</Label>
                 <Input 
                   id="precoVenda"
                   type="number"
                   step="0.01"
                   value={novoPrecoVenda}
                   onChange={(e) => setNovoPrecoVenda(e.target.value)}
-                  placeholder="Digite o preço de venda"
+                  placeholder="Digite o valor"
                 />
               </div>
               

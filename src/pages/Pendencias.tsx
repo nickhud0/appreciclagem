@@ -8,6 +8,8 @@ import { useEffect, useState } from "react";
 import { useToast } from "@/hooks/use-toast";
 import { insert, addToSyncQueue, selectAll } from "@/database";
 import { getSyncStatus } from "@/services/syncEngine";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { formatCurrency } from "@/utils/formatters";
 
 const Pendencias = () => {
   const navigate = useNavigate();
@@ -18,6 +20,7 @@ const Pendencias = () => {
   const [observacao, setObservacao] = useState("");
   const [salvando, setSalvando] = useState(false);
   const [items, setItems] = useState<any[]>([]);
+  const [isTipoDialogOpen, setIsTipoDialogOpen] = useState(false);
 
   async function loadItems() {
     try {
@@ -89,13 +92,13 @@ const Pendencias = () => {
       </div>
 
       {/* Conteúdo */}
-      <Card className="p-6">
-        <div className="flex items-center mb-6">
+      <Card className="p-4 sm:p-5 rounded-xl shadow-sm">
+        <div className="flex items-center mb-4">
           <AlertCircle className="h-6 w-6 text-primary mr-3" />
-          <h2 className="text-lg font-semibold">Registrar Pendência</h2>
+          <h2 className="text-base sm:text-lg font-semibold text-foreground">Registrar Pendência</h2>
         </div>
 
-        <div className="grid grid-cols-1 gap-4 mb-6">
+        <div className="grid grid-cols-1 gap-3 sm:gap-4 mb-4">
           <div>
             <Label htmlFor="nome">Nome</Label>
             <Input id="nome" value={nome} onChange={(e) => setNome(e.target.value)} className="mt-1" />
@@ -105,11 +108,16 @@ const Pendencias = () => {
             <Input id="valor" type="number" step="0.01" value={valor} onChange={(e) => setValor(e.target.value)} className="mt-1" />
           </div>
           <div>
-            <Label htmlFor="tipo">Tipo</Label>
-            <select id="tipo" value={tipo} onChange={(e) => setTipo(e.target.value as any)} className="w-full mt-1 p-2 border border-input rounded-md bg-background">
-              <option value="a_pagar">A pagar</option>
-              <option value="a_receber">A receber</option>
-            </select>
+            <Label>Tipo</Label>
+            <div className="mt-1">
+              <Button
+                variant="outline"
+                className="w-full justify-between rounded-lg"
+                onClick={() => setIsTipoDialogOpen(true)}
+              >
+                <span className="text-sm sm:text-base">{tipo === 'a_pagar' ? 'A pagar' : 'A receber'}</span>
+              </Button>
+            </div>
           </div>
           <div>
             <Label htmlFor="obs">Observação (opcional)</Label>
@@ -122,19 +130,19 @@ const Pendencias = () => {
 
         <div className="space-y-3">
           {items.length === 0 ? (
-            <Card className="p-6 text-center text-muted-foreground">Nenhuma pendência registrada.</Card>
+            <Card className="p-6 text-center text-muted-foreground rounded-xl border border-border/20">Nenhuma pendência registrada.</Card>
           ) : (
             items.map((p) => (
-              <Card key={p.id} className="p-4">
+              <Card key={p.id} className="p-3 sm:p-4 rounded-xl border border-border/20 shadow-sm hover:bg-accent/5 transition-colors">
                 <div className="flex items-center justify-between">
-                  <div>
-                    <div className="font-semibold text-foreground">{p.nome}</div>
-                    <div className="text-xs text-muted-foreground">R$ {p.valor} • {p.tipo} • {new Date(p.data).toLocaleString()}</div>
+                  <div className="min-w-0">
+                    <div className="text-lg sm:text-xl font-semibold text-foreground truncate">{p.nome}</div>
+                    <div className="text-sm sm:text-base text-muted-foreground mt-0.5">
+                      {formatCurrency(Number(p.valor) || 0)} • {(p.tipo === 'a_pagar' ? 'A pagar' : 'A receber')} • {new Date(p.data).toLocaleString()}
+                    </div>
                   </div>
                   {p.origem_offline === 1 && (
-                    <span className="inline-flex items-center text-[10px] text-orange-700 bg-orange-100 border border-orange-200 px-1.5 py-0.5 rounded">
-                      <CloudOff className="h-3 w-3 mr-1" /> pendente
-                    </span>
+                    <CloudOff className="h-4 w-4 text-yellow-500" title="Aguardando sincronização" />
                   )}
                 </div>
               </Card>
@@ -142,6 +150,34 @@ const Pendencias = () => {
           )}
         </div>
       </Card>
+
+      {/* Tipo Selector Dialog */}
+      <Dialog open={isTipoDialogOpen} onOpenChange={setIsTipoDialogOpen}>
+        <DialogContent className="rounded-2xl shadow-xl p-4 bg-background max-w-sm mx-auto">
+          <DialogHeader>
+            <DialogTitle className="text-base sm:text-lg font-bold text-foreground">Selecionar Tipo</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-2 mt-2">
+            <Button
+              variant={tipo === 'a_pagar' ? 'secondary' : 'ghost'}
+              className="w-full justify-start rounded-lg text-left text-sm sm:text-base"
+              onClick={() => { setTipo('a_pagar'); setIsTipoDialogOpen(false); }}
+            >
+              A pagar
+            </Button>
+            <Button
+              variant={tipo === 'a_receber' ? 'secondary' : 'ghost'}
+              className="w-full justify-start rounded-lg text-left text-sm sm:text-base"
+              onClick={() => { setTipo('a_receber'); setIsTipoDialogOpen(false); }}
+            >
+              A receber
+            </Button>
+          </div>
+          <DialogFooter>
+            <Button onClick={() => setIsTipoDialogOpen(false)} className="w-full mt-3">Fechar</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };
