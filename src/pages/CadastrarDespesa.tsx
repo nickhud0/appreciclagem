@@ -4,11 +4,21 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useToast } from "@/hooks/use-toast";
-import { insert, addToSyncQueue, selectAll, selectWhere } from "@/database";
-import { getSyncStatus } from "@/services/syncEngine";
+import { addToSyncQueue, selectAll, selectWhere } from "@/database";
 import { formatCurrency } from "@/utils/formatters";
+import { logger } from "@/utils/logger";
+import {
+  AlertDialog,
+  AlertDialogContent,
+  AlertDialogHeader,
+  AlertDialogFooter,
+  AlertDialogTitle,
+  AlertDialogDescription,
+  AlertDialogCancel,
+  AlertDialogAction,
+} from "@/components/ui/alert-dialog";
 
 const CadastrarDespesa = () => {
   const navigate = useNavigate();
@@ -18,6 +28,7 @@ const CadastrarDespesa = () => {
   const [salvando, setSalvando] = useState(false);
   const [lista, setLista] = useState<any[]>([]);
   const [carregandoLista, setCarregandoLista] = useState(true);
+  const [confirmOpen, setConfirmOpen] = useState(false);
 
   async function handleSalvar() {
     if (!descricao.trim() || !valor) {
@@ -26,32 +37,46 @@ const CadastrarDespesa = () => {
     }
     setSalvando(true);
     try {
-      const status = getSyncStatus();
-      const origem_offline = status.hasCredentials && status.isOnline ? 0 : 1;
       const now = new Date().toISOString();
-      const novoId = await insert('despesa_mes', {
+      // Sempre fila offline para evitar duplicação local/confirmada
+      const payload = {
         data: now,
         descricao: descricao.trim(),
         valor: parseFloat(valor),
         criado_por: 'local-user',
         atualizado_por: 'local-user',
-        origem_offline
-      });
-      await addToSyncQueue('despesa', 'INSERT', novoId, {
-        id: novoId,
-        data: now,
-        descricao: descricao.trim(),
-        valor: parseFloat(valor),
-        criado_por: 'local-user',
-        atualizado_por: 'local-user'
-      });
-      toast({ title: 'Despesa cadastrada', description: `R$ ${valor} registrada${origem_offline ? ' (offline)' : ''}` });
-      navigate('/');
+        origem_offline: 1
+      } as any;
+
+      // record_id vazio para não tentar atualizar item local inexistente
+      await addToSyncQueue('despesa', 'INSERT', '', payload);
+
+      toast({ title: 'Despesa cadastrada', description: `R$ ${valor} registrada (offline)` });
+      // UX: permanecer na página para cadastrar múltiplas despesas
+      setConfirmOpen(false);
+      setDescricao("");
+      setValor("");
+      // Atualiza a lista para exibir o item pendente recém adicionado
+      void loadLista();
     } catch (error) {
       toast({ title: 'Erro ao salvar', variant: 'destructive' });
     } finally {
       setSalvando(false);
     }
+  }
+
+  function handleOpenConfirm() {
+    // Validações antes de abrir confirmação
+    if (!descricao.trim() || !valor) {
+      toast({ title: 'Campos obrigatórios', description: 'Preencha descrição e valor', variant: 'destructive' });
+      return;
+    }
+    const valorNumber = Number(valor);
+    if (!isFinite(valorNumber) || valorNumber <= 0) {
+      toast({ title: 'Informe um valor válido.' });
+      return;
+    }
+    setConfirmOpen(true);
   }
 
   async function loadLista() {
@@ -64,23 +89,31 @@ const CadastrarDespesa = () => {
         [0, 'despesa', 'INSERT'],
         'created_at DESC'
       );
-      const pendentes = pendentesRows.map((row: any) => {
+      const pendentes = (pendentesRows || []).map((row: any) => {
         let payload: any = {};
-        try { payload = JSON.parse(row.payload || '{}'); } catch {}
+        try {
+          const parsed = JSON.parse(row.payload || '{}');
+          payload = parsed && typeof parsed === 'object' ? parsed : {};
+        } catch (e) {
+          // invalid JSON: keep empty payload
+        }
         return {
           id: `pending-${row.id}`,
           data: payload.data || row.created_at,
           descricao: payload.descricao || '(sem descrição)',
-          valor: payload.valor || 0,
+          valor: Number(payload.valor) || 0,
           __pending: true
         };
       });
-      const unificada = [...pendentes, ...confirmadas].sort((a: any, b: any) => {
-        const da = a.data ? new Date(a.data).getTime() : 0;
-        const db = b.data ? new Date(b.data).getTime() : 0;
+      const unificada = [...pendentes, ...(confirmadas || [])].sort((a: any, b: any) => {
+        const da = a?.data ? new Date(a.data).getTime() : 0;
+        const db = b?.data ? new Date(b.data).getTime() : 0;
         return db - da;
       });
-      setLista(unificada);
+      setLista(Array.isArray(unificada) ? unificada : []);
+    } catch (error) {
+      logger.error('Falha ao carregar despesas:', error);
+      setLista([]);
     } finally {
       setCarregandoLista(false);
     }
@@ -119,10 +152,33 @@ const CadastrarDespesa = () => {
             <Input id="valor" type="number" step="0.01" value={valor} onChange={(e) => setValor(e.target.value)} className="mt-1" />
           </div>
 
-          <Button onClick={handleSalvar} disabled={salvando} className="w-full">
+          <Button onClick={handleOpenConfirm} disabled={salvando} className="w-full">
             {salvando ? 'Salvando...' : 'Salvar Despesa'}
           </Button>
         </div>
+        <AlertDialog open={confirmOpen} onOpenChange={setConfirmOpen}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Confirmar lançamento da despesa?</AlertDialogTitle>
+              <AlertDialogDescription>
+                <div className="mt-2 space-y-1">
+                  <div>
+                    <span className="font-medium">Descrição:</span> {descricao || '—'}
+                  </div>
+                  <div>
+                    <span className="font-medium">Valor:</span> {formatCurrency(Number(valor) || 0)}
+                  </div>
+                </div>
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel disabled={salvando}>Cancelar</AlertDialogCancel>
+              <AlertDialogAction onClick={handleSalvar} disabled={salvando}>
+                {salvando ? 'Salvando...' : 'Confirmar'}
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
         <div className="mt-6 space-y-3">
           {carregandoLista ? (
             <Card className="p-6 text-center text-muted-foreground">Carregando despesas...</Card>

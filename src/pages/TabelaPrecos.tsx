@@ -1,4 +1,4 @@
-import { ArrowLeft, Search, Edit3, List, Plus, CloudOff, Filter, Check } from "lucide-react";
+import { ArrowLeft, Search, Edit3, List, Plus, CloudOff, Filter, Check, Trash2 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { useEffect, useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
@@ -8,9 +8,19 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
 import { formatCurrency } from "@/utils/formatters";
-import { selectAll, update as dbUpdate } from "@/database";
+import { selectAll, update as dbUpdate, deleteFrom, exists, addToSyncQueue } from "@/database";
 import { getSyncStatus } from "@/services/syncEngine";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import {
+  AlertDialog,
+  AlertDialogContent,
+  AlertDialogHeader,
+  AlertDialogFooter,
+  AlertDialogTitle,
+  AlertDialogDescription,
+  AlertDialogCancel,
+  AlertDialogAction,
+} from "@/components/ui/alert-dialog";
 
 const TabelaPrecos = () => {
   const navigate = useNavigate();
@@ -26,6 +36,9 @@ const TabelaPrecos = () => {
   
   const [materiais, setMateriais] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [materialToDelete, setMaterialToDelete] = useState<any>(null);
+  const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
   async function loadMateriais() {
     try {
@@ -118,6 +131,41 @@ const TabelaPrecos = () => {
       });
     }
   };
+
+  function handleDeleteClick(material: any) {
+    setMaterialToDelete(material);
+    setIsDeleteDialogOpen(true);
+  }
+
+  async function handleConfirmDelete() {
+    if (!materialToDelete) return;
+    const id = materialToDelete.id;
+    try {
+      setDeleting(true);
+      // Safety checks: referenced by comandas/items
+      const usedInUltimas = await exists('ultimas_20', 'material = ?', [id]);
+      const usedInComanda = await exists('comanda_20', 'material_id = ?', [id]);
+      if (usedInUltimas || usedInComanda) {
+        toast({ title: 'Este material está em uso e não pode ser removido.', variant: 'destructive' });
+        return;
+      }
+
+      // Delete locally
+      await deleteFrom('material', 'id = ?', [id]);
+
+      // Always enqueue for sync (offline-first)
+      await addToSyncQueue('material', 'DELETE', id, {} as any);
+
+      await loadMateriais();
+      toast({ title: 'Material excluído' });
+      setIsDeleteDialogOpen(false);
+      setMaterialToDelete(null);
+    } catch (error) {
+      toast({ title: 'Erro ao excluir material', variant: 'destructive' });
+    } finally {
+      setDeleting(false);
+    }
+  }
 
   const handleCancelEdit = () => {
     setIsEditDialogOpen(false);
@@ -253,22 +301,40 @@ const TabelaPrecos = () => {
                     {formatCurrency(material.preco_compra || 0)}/kg
                   </p>
                 </div>
-                <TooltipProvider>
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="hover:bg-accent/20 min-w-[36px] min-h-[36px]"
-                        onClick={() => handleEditClick(material)}
-                        aria-label="Editar material"
-                      >
-                        <Edit3 className="h-5 w-5 text-primary" />
-                      </Button>
-                    </TooltipTrigger>
-                    <TooltipContent>Editar material</TooltipContent>
-                  </Tooltip>
-                </TooltipProvider>
+                <div className="flex items-center gap-1">
+                  <TooltipProvider>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="hover:bg-accent/20 min-w-[36px] min-h-[36px]"
+                          onClick={() => handleEditClick(material)}
+                          aria-label="Editar material"
+                        >
+                          <Edit3 className="h-5 w-5 text-primary" />
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent>Editar material</TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
+                  <TooltipProvider>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="hover:bg-accent/20 min-w-[36px] min-h-[36px]"
+                          onClick={() => handleDeleteClick(material)}
+                          aria-label="Excluir material"
+                        >
+                          <Trash2 className="h-5 w-5 text-red-600" />
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent>Excluir material</TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
+                </div>
               </div>
             </Card>
           ))}
@@ -330,6 +396,24 @@ const TabelaPrecos = () => {
           )}
         </DialogContent>
       </Dialog>
+
+      {/* Confirmar Exclusão */}
+      <AlertDialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Excluir Material</AlertDialogTitle>
+            <AlertDialogDescription>
+              Tem certeza que deseja excluir este material? Esta ação não pode ser desfeita.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deleting}>Cancelar</AlertDialogCancel>
+            <AlertDialogAction onClick={handleConfirmDelete} disabled={deleting} className="bg-red-600 text-white hover:bg-red-600/90">
+              {deleting ? 'Excluindo...' : 'Excluir'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 };

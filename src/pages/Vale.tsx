@@ -6,8 +6,20 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useEffect, useState } from "react";
 import { useToast } from "@/hooks/use-toast";
-import { insert, addToSyncQueue, selectAll } from "@/database";
+import { insert, addToSyncQueue, selectAll, selectWhere } from "@/database";
 import { getSyncStatus } from "@/services/syncEngine";
+import { formatCurrency } from "@/utils/formatters";
+import { logger } from "@/utils/logger";
+import {
+  AlertDialog,
+  AlertDialogContent,
+  AlertDialogHeader,
+  AlertDialogFooter,
+  AlertDialogTitle,
+  AlertDialogDescription,
+  AlertDialogCancel,
+  AlertDialogAction,
+} from "@/components/ui/alert-dialog";
 
 const Vale = () => {
   const navigate = useNavigate();
@@ -17,12 +29,49 @@ const Vale = () => {
   const [observacao, setObservacao] = useState("");
   const [salvando, setSalvando] = useState(false);
   const [vales, setVales] = useState<any[]>([]);
+  const [confirmOpen, setConfirmOpen] = useState(false);
 
   async function loadVales() {
     try {
-      const rows = await selectAll<any>('vale_false', 'data DESC');
-      setVales(rows);
-    } catch {
+      const confirmadas = await selectAll<any>('vale_false', 'data DESC');
+      const pendentesRows = await selectWhere<any>(
+        'sync_queue',
+        'synced = ? AND table_name = ? AND operation = ?',
+        [0, 'vale_false', 'INSERT'],
+        'created_at DESC'
+      );
+
+      const pendentes = (pendentesRows || []).map((row: any) => {
+        let payload: any = {};
+        try {
+          const parsed = JSON.parse(row.payload || '{}');
+          payload = parsed && typeof parsed === 'object' ? parsed : {};
+        } catch (e) {
+          // ignore invalid json
+        }
+        return {
+          id: `pending-${row.id}`,
+          record_id: row.record_id,
+          data: payload.data || row.created_at,
+          status: 0,
+          nome: payload.nome || '(sem nome)',
+          valor: Number(payload.valor) || 0,
+          observacao: payload.observacao || null,
+          __pending: true
+        };
+      });
+
+      const pendingRecordIds = new Set<string>((pendentes || []).map((p: any) => String(p.record_id || '')));
+      const confirmadasSemDuplicatas = (confirmadas || []).filter((c: any) => !pendingRecordIds.has(String(c.id)));
+
+      const unificada = [...pendentes, ...confirmadasSemDuplicatas].sort((a: any, b: any) => {
+        const da = a?.data ? new Date(a.data).getTime() : 0;
+        const db = b?.data ? new Date(b.data).getTime() : 0;
+        return db - da;
+      });
+      setVales(Array.isArray(unificada) ? unificada : []);
+    } catch (error) {
+      logger.error('Falha ao carregar vales:', error);
       setVales([]);
     }
   }
@@ -61,7 +110,8 @@ const Vale = () => {
         criado_por: 'local-user',
         atualizado_por: 'local-user'
       });
-      toast({ title: 'Vale registrado', description: `${nome} - R$ ${valor}${origem_offline ? ' (offline)' : ''}` });
+      toast({ title: 'Vale registrado', description: `${nome} - ${formatCurrency(Number(valor) || 0)}${origem_offline ? ' (offline)' : ''}` });
+      setConfirmOpen(false);
       setNome("");
       setValor("");
       setObservacao("");
@@ -71,6 +121,19 @@ const Vale = () => {
     } finally {
       setSalvando(false);
     }
+  }
+
+  function handleOpenConfirm() {
+    if (!nome.trim() || !valor) {
+      toast({ title: 'Campos obrigatórios', description: 'Preencha nome e valor', variant: 'destructive' });
+      return;
+    }
+    const valorNum = Number(valor);
+    if (!isFinite(valorNum) || valorNum <= 0) {
+      toast({ title: 'Informe um valor válido.' });
+      return;
+    }
+    setConfirmOpen(true);
   }
 
   return (
@@ -105,26 +168,53 @@ const Vale = () => {
             <Label htmlFor="obs">Observação (opcional)</Label>
             <Input id="obs" value={observacao} onChange={(e) => setObservacao(e.target.value)} className="mt-1" />
           </div>
-          <Button onClick={handleSalvar} disabled={salvando} className="w-full">
+          <Button onClick={handleOpenConfirm} disabled={salvando} className="w-full">
             {salvando ? 'Salvando...' : 'Salvar Vale'}
           </Button>
         </div>
+
+        <AlertDialog open={confirmOpen} onOpenChange={setConfirmOpen}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Confirmar registro de vale?</AlertDialogTitle>
+              <AlertDialogDescription>
+                <div className="mt-2 space-y-1">
+                  <div>
+                    <span className="font-medium">Nome:</span> {nome || '—'}
+                  </div>
+                  <div>
+                    <span className="font-medium">Valor:</span> {formatCurrency(Number(valor) || 0)}
+                  </div>
+                </div>
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel disabled={salvando}>Cancelar</AlertDialogCancel>
+              <AlertDialogAction onClick={handleSalvar} disabled={salvando}>
+                {salvando ? 'Salvando...' : 'Confirmar'}
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
 
         <div className="space-y-3">
           {vales.length === 0 ? (
             <Card className="p-6 text-center text-muted-foreground">Nenhum vale registrado.</Card>
           ) : (
             vales.map((v) => (
-              <Card key={v.id} className="p-4">
+              <Card key={v.id} className="p-4 rounded-xl border border-border/20 shadow-sm hover:bg-accent/5 transition-colors">
                 <div className="flex items-center justify-between">
-                  <div>
-                    <div className="font-semibold text-foreground">{v.nome}</div>
-                    <div className="text-xs text-muted-foreground">R$ {v.valor} • {new Date(v.data).toLocaleString()}</div>
+                  <div className="min-w-0">
+                    <div className="text-lg font-semibold text-foreground truncate" title={v.nome}>{v.nome}</div>
+                    <div className="text-sm text-muted-foreground mt-0.5 truncate">
+                      {formatCurrency(Number(v.valor) || 0)} • {v.data ? new Date(v.data).toLocaleString() : ''}
+                    </div>
+                    {v.observacao ? (
+                      <div className="text-sm text-muted-foreground mt-0.5 truncate">{v.observacao}</div>
+                    ) : null}
                   </div>
-                  {v.origem_offline === 1 && (
-                    <span className="inline-flex items-center text-[10px] text-orange-700 bg-orange-100 border border-orange-200 px-1.5 py-0.5 rounded">
-                      <CloudOff className="h-3 w-3 mr-1" /> pendente
-                    </span>
+                  {(v.__pending || v.origem_offline === 1) && (
+                    <CloudOff className="h-4 w-4 text-yellow-500" title="Pendente de sincronização" />
                   )}
                 </div>
               </Card>
