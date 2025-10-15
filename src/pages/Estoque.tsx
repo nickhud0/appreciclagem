@@ -3,28 +3,47 @@ import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState, useCallback } from "react";
 import { selectAll } from "@/database";
 import { formatCurrency } from "@/utils/formatters";
+import { onSyncStatus, type SyncStatus } from "@/services/syncEngine";
+import type { Estoque as EstoqueRow } from "@/database";
 
 const Estoque = () => {
   const navigate = useNavigate();
-  const [estoque, setEstoque] = useState<any[]>([]);
+  const [estoque, setEstoque] = useState<EstoqueRow[]>([]);
   const [busca, setBusca] = useState("");
   const [loading, setLoading] = useState(true);
 
+  const refresh = useCallback(async () => {
+    const rows = await selectAll<EstoqueRow>('estoque', 'material ASC');
+    setEstoque(rows);
+  }, []);
+
   useEffect(() => {
-    async function load() {
+    async function loadInitial() {
       try {
         setLoading(true);
-        const rows = await selectAll<any>('estoque', 'material ASC');
-        setEstoque(rows);
+        await refresh();
       } finally {
         setLoading(false);
       }
     }
-    void load();
-  }, []);
+    void loadInitial();
+  }, [refresh]);
+
+  // Silent background refresh after a successful sync cycle
+  const prevStatusRef = useRef<SyncStatus | null>(null);
+  useEffect(() => {
+    const off = onSyncStatus((status) => {
+      const prev = prevStatusRef.current;
+      if (prev && prev.syncing && !status.syncing && !status.lastError) {
+        void refresh();
+      }
+      prevStatusRef.current = status;
+    });
+    return () => off();
+  }, [refresh]);
 
   const filtrado = useMemo(() => {
     const q = busca.toLowerCase();
