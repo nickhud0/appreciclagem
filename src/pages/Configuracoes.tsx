@@ -106,8 +106,7 @@ const Configuracoes = () => {
     try {
       saveSupabaseSettings({ url: url.trim(), anonKey: anonKey.trim() });
       notifyCredentialsUpdated();
-      triggerSyncNow();
-      toast({ title: "Configurações salvas", description: "Sincronização iniciada" });
+      toast({ title: "Configurações salvas", description: "Use 'Sincronizar Agora' para executar o sync" });
     } catch (error) {
       toast({ title: "Erro ao salvar", variant: "destructive" });
     } finally {

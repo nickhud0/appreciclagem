@@ -57,8 +57,8 @@ const CadastrarMaterial = () => {
       const categoriaFinal = formData.novaCategoria.trim() || formData.categoria || "Outros";
       
       const now = new Date().toISOString();
-      const status = getSyncStatus();
-      const origem_offline = status.hasCredentials && status.isOnline ? 0 : 1;
+      // Always mark as offline-origin until successful sync confirms it
+      const origem_offline = 1;
 
       const dataToInsert = {
         data: now,

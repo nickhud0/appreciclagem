@@ -6,7 +6,7 @@ import { Label } from "@/components/ui/label";
 import { useEffect, useState } from "react";
 import { executeQuery, addToSyncQueue } from "@/database";
 import { useToast } from "@/hooks/use-toast";
-import { getSyncStatus, triggerSyncNow } from "@/services/syncEngine";
+import { getSyncStatus } from "@/services/syncEngine";
 import { Device } from '@capacitor/device';
 
 const Fechamento = () => {
@@ -62,8 +62,7 @@ const Fechamento = () => {
       };
       const syntheticId = `fech_${Date.now()}`;
       await addToSyncQueue('fechamento', 'INSERT', syntheticId, payload);
-      triggerSyncNow();
-      toast({ title: 'Fechamento enviado', description: 'Fechamento enfileirado para sincronização' });
+      toast({ title: 'Fechamento enfileirado', description: 'Sincronize manualmente em Configurações' });
       setObservacao("");
     } catch (error) {
       toast({ title: 'Erro ao enviar fechamento', variant: 'destructive' });

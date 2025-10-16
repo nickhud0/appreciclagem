@@ -22,7 +22,7 @@ export interface SyncStatus {
   lastError?: string | null;
 }
 
-const DEFAULT_INTERVAL_MS = 30_000;
+const DEFAULT_INTERVAL_MS = 30_000; // deprecated: no longer used for auto-sync
 
 // Views/tables to pull from Supabase → SQLite
 const PULL_TABLES: string[] = [
@@ -46,6 +46,12 @@ const PULL_TABLES: string[] = [
   'calculo_fechamento'
 ];
 
+// Tables that contain an 'origem_offline' flag locally and must preserve
+// offline-created rows during pulls to avoid data loss if push fails.
+const PRESERVE_OFFLINE_ROWS_TABLES = new Set<string>([
+  'material'
+]);
+
 let listeners: Listener[] = [];
 let status: SyncStatus = {
   isOnline: false,
@@ -56,7 +62,7 @@ let status: SyncStatus = {
   lastError: null
 };
 
-let intervalId: number | null = null;
+let intervalId: number | null = null; // deprecated: we won't schedule intervals anymore
 let networkListenerCleanup: (() => void) | null = null;
 
 function emit() {
@@ -107,12 +113,37 @@ async function pushPending(): Promise<void> {
     }
 
     try {
+      logger.info('🔼 Pushing pending item', { id: item.id, table, op, recordId, keys: Object.keys(payload || {}) });
       if (op === 'INSERT' || op === 'UPDATE') {
-        const { data, error } = await client
-          .from(table)
-          .upsert(payload)
-          .select();
+        let data: any;
+        let error: any;
+
+        if (table === 'material') {
+          // Sanitize payload to match Supabase 'material' columns only
+          const remote: Record<string, any> = {};
+          if (payload.id != null) remote.id = payload.id;
+          if (payload.data != null) remote.data = payload.data;
+          if (payload.nome != null) remote.nome = payload.nome;
+          if (payload.categoria != null) remote.categoria = payload.categoria;
+          if (payload.preco_compra != null) remote.preco_compra = Number(payload.preco_compra);
+          if (payload.preco_venda != null) remote.preco_venda = Number(payload.preco_venda);
+          if (payload.criado_por != null) remote.criado_por = payload.criado_por;
+          if (payload.atualizado_por != null) remote.atualizado_por = payload.atualizado_por;
+
+          logger.info('🧰 Material push sanitized payload', { keys: Object.keys(remote) });
+          ({ data, error } = await client
+            .from('material')
+            .upsert(remote, { onConflict: 'id' })
+            .select());
+        } else {
+          ({ data, error } = await client
+            .from(table)
+            .upsert(payload)
+            .select());
+        }
+
         if (error) throw error;
+        logger.info('✅ Push success', { table, op, recordId, count: Array.isArray(data) ? data.length : 0 });
 
         // Mark local record as synced when applicable
         if (recordId && table && (op === 'INSERT' || op === 'UPDATE')) {
@@ -134,13 +165,14 @@ async function pushPending(): Promise<void> {
         }
         const { error } = await client.from(table).delete().eq('id', recordId);
         if (error) throw error;
+        logger.info('✅ Delete push success', { table, recordId });
         await markSyncItemAsSynced(item.id);
       } else {
         logger.warn('Unknown operation in sync_queue:', op);
         // skip unknown operations but don't mark as synced
       }
     } catch (err) {
-      logger.error('Push failed for', table, 'op', op, err);
+      logger.error('❌ Push failed', { table, op, recordId, error: err });
       // Stop processing further to avoid hammering; leave remaining in queue
       // Alternatively, continue to try others; we choose continue
       continue;
@@ -151,14 +183,20 @@ async function pushPending(): Promise<void> {
 async function replaceTableData(table: string, rows: any[]): Promise<void> {
   // Build transaction: clear table, insert rows
   const stmts: Array<{ statement: string; values?: any[] }> = [];
-  stmts.push({ statement: `DELETE FROM ${table}` });
+  const deleteStmt = PRESERVE_OFFLINE_ROWS_TABLES.has(table)
+    ? `DELETE FROM ${table} WHERE origem_offline = 0`
+    : `DELETE FROM ${table}`;
+  stmts.push({ statement: deleteStmt });
 
   for (const row of rows) {
     const columns = Object.keys(row);
     if (columns.length === 0) continue;
     const placeholders = columns.map(() => '?').join(', ');
     const values = columns.map((c) => row[c]);
-    const statement = `INSERT INTO ${table} (${columns.join(', ')}) VALUES (${placeholders})`;
+    const insertVerb = PRESERVE_OFFLINE_ROWS_TABLES.has(table)
+      ? 'INSERT OR IGNORE'
+      : 'INSERT';
+    const statement = `${insertVerb} INTO ${table} (${columns.join(', ')}) VALUES (${placeholders})`;
     stmts.push({ statement, values });
   }
 
@@ -167,9 +205,7 @@ async function replaceTableData(table: string, rows: any[]): Promise<void> {
   } catch (error) {
     // As a fallback, try to at least clear the table if inserts failed
     logger.error('Replace table data failed for', table, error);
-    try {
-      await executeStatement(`DELETE FROM ${table}`);
-    } catch {}
+    // Do not clear the table to avoid data loss; keep existing local data intact
     throw error;
   }
 }
@@ -228,22 +264,14 @@ async function syncOnce(): Promise<void> {
   }
 }
 
-function ensureInterval(intervalMs: number) {
-  if (intervalId !== null) return;
-  // Use window.setInterval typing compatibility
-  intervalId = window.setInterval(() => {
-    void syncOnce();
-  }, intervalMs) as unknown as number;
-}
+// Removed periodic auto-sync interval. Sync is now manual or at startup only.
 
 async function attachNetworkListener() {
   try {
     const listener = await Network.addListener('networkStatusChange', async (s) => {
       status.isOnline = !!s.connected;
       emit();
-      if (status.isOnline && status.hasCredentials) {
-        void syncOnce();
-      }
+      // No automatic sync on network changes
     });
     networkListenerCleanup = () => listener.remove();
   } catch (error) {
@@ -251,7 +279,7 @@ async function attachNetworkListener() {
     const onlineHandler = () => {
       status.isOnline = true;
       emit();
-      if (status.hasCredentials) void syncOnce();
+      // No automatic sync on online
     };
     const offlineHandler = () => {
       status.isOnline = false;
@@ -272,9 +300,7 @@ function attachStorageWatcher() {
     if (e.key === 'supabase.url' || e.key === 'supabase.anonKey') {
       refreshCredentialsStatus();
       emit();
-      if (status.hasCredentials && status.isOnline) {
-        void syncOnce();
-      }
+      // No automatic sync when credentials change; user will trigger manually
     }
   };
   window.addEventListener('storage', handler);
@@ -284,18 +310,17 @@ function attachStorageWatcher() {
 let storageWatcherCleanup: (() => void) | null = null;
 
 export function initializeSyncEngine(options?: { intervalMs?: number }) {
-  const intervalMs = options?.intervalMs ?? DEFAULT_INTERVAL_MS;
+  const intervalMs = options?.intervalMs ?? DEFAULT_INTERVAL_MS; // kept for API compatibility
   refreshCredentialsStatus();
   void refreshOnlineStatus();
   emit();
-
-  ensureInterval(intervalMs);
+  // No periodic interval is scheduled anymore
   void attachNetworkListener();
   storageWatcherCleanup = attachStorageWatcher();
 }
 
 export function startSyncLoop() {
-  // noop: interval is already ensured in initialize
+  // Perform a single sync at startup if possible
   void syncOnce();
 }
 
@@ -335,8 +360,6 @@ export function getSyncStatus(): SyncStatus {
 export function notifyCredentialsUpdated() {
   refreshCredentialsStatus();
   emit();
-  if (status.hasCredentials && status.isOnline) {
-    void syncOnce();
-  }
+  // Do not auto-sync on credentials changes; manual control only
 }
 
