@@ -10,12 +10,9 @@ import { formatCurrency, formatNumber } from "@/utils/formatters";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 
-const DEBUG_HISTORICO = true;
+const DEBUG_HISTORICO = false;
 function dbg(...args: any[]) {
-  if (DEBUG_HISTORICO) {
-    // eslint-disable-next-line no-console
-    console.log('[Historico]', ...args);
-  }
+  // debug logging disabled for silent UX
 }
 function getPendingComandaKey(payload: any, fallback?: string | number | null): string | null {
   try {
@@ -416,10 +413,7 @@ const HistoricoComandas = () => {
           }
         } catch {}
       }
-      if (DEBUG_HISTORICO) console.log('Popup items', { codigo, confirmed: confirmedItemsLocal.length, pending: pendingItemsLocal.length, total: resultItems.length });
-      // Verification meta log (remove later)
-      // eslint-disable-next-line no-console
-      console.log('Popup meta', { codigo, data: dataStr, hora: horaStr, dispositivo });
+      // debug logging disabled for silent UX
       setSelectedGroup(prev => prev ? { ...prev, items: resultItems, __dispositivo: dispositivo } : { ...group, items: resultItems, __dispositivo: dispositivo });
     } catch {}
   }

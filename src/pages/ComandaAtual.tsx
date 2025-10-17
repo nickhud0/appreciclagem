@@ -10,7 +10,7 @@ import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
 import { formatCurrency } from "@/utils/formatters";
 import { insert, addToSyncQueue } from "@/database";
-import { getSyncStatus } from "@/services/syncEngine";
+import { getSyncStatus, triggerSyncNow } from "@/services/syncEngine";
 import { getComandaPrefix, nextComandaSequence, buildComandaCodigo } from "@/services/settings";
 
 interface ComandaItem {
@@ -88,10 +88,7 @@ const ComandaAtual = () => {
     updateComanda(novaComanda);
     setIsEditDialogOpen(false);
     setSelectedItem(null);
-    toast({
-      title: "Item atualizado",
-      description: "Item da comanda foi atualizado com sucesso"
-    });
+    // success toast removed to keep UI silent
   };
 
   const handleDeleteItem = (itemId: number) => {
@@ -104,10 +101,7 @@ const ComandaAtual = () => {
     novaComanda.total = novaComanda.itens.reduce((acc, item) => acc + item.total, 0);
 
     updateComanda(novaComanda);
-    toast({
-      title: "Item removido",
-      description: "Item foi removido da comanda"
-    });
+    // success toast removed to keep UI silent
   };
 
   const handleAddItem = () => {
@@ -136,19 +130,13 @@ const ComandaAtual = () => {
     setSelectedMaterial(null);
     setNovaQuantidade("");
     setNovoPreco("");
-    toast({
-      title: "Item adicionado",
-      description: `${selectedMaterial.nome} foi adicionado à comanda`
-    });
+    // success toast removed to keep UI silent
   };
 
   const handleLimparComanda = () => {
     setComanda(null);
     localStorage.removeItem('comandaAtual');
-    toast({
-      title: "Comanda limpa",
-      description: "Todos os itens foram removidos da comanda"
-    });
+    // success toast removed to keep UI silent
   };
 
   const handleFinalizarComanda = async () => {
@@ -183,9 +171,7 @@ const ComandaAtual = () => {
           criado_por: deviceName,
           atualizado_por: 'local-user'
         });
-        // Verification log (remove later)
-        // eslint-disable-next-line no-console
-        console.log('Comanda criada', deviceName);
+        // removed verification log to keep console silent
       } catch {}
 
       // Enfileirar cada item diretamente na tabela 'item' usando codigo como vínculo
@@ -207,12 +193,17 @@ const ComandaAtual = () => {
         } catch {}
       }
 
-      toast({
-        title: "Comanda finalizada",
-        description: `Comanda de ${comanda.tipo} finalizada com total de ${formatCurrency(comanda.total)}`
-      });
+      // Disparar sincronização silenciosa se online e com credenciais
+      try {
+        if (status.hasCredentials && status.isOnline) {
+          triggerSyncNow();
+        }
+      } catch {}
+
+      // success toast removed to keep UI silent
 
       handleLimparComanda();
+      navigate('/');
     } catch (error) {
       toast({ title: 'Erro ao finalizar comanda', variant: 'destructive' });
     }

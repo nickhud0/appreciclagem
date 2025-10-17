@@ -113,7 +113,6 @@ async function pushPending(): Promise<void> {
     }
 
     try {
-      logger.info('🔼 Pushing pending item', { id: item.id, table, op, recordId, keys: Object.keys(payload || {}) });
       if (op === 'INSERT' || op === 'UPDATE') {
         let data: any;
         let error: any;
@@ -130,11 +129,81 @@ async function pushPending(): Promise<void> {
           if (payload.criado_por != null) remote.criado_por = payload.criado_por;
           if (payload.atualizado_por != null) remote.atualizado_por = payload.atualizado_por;
 
-          logger.info('🧰 Material push sanitized payload', { keys: Object.keys(remote) });
           ({ data, error } = await client
             .from('material')
             .upsert(remote, { onConflict: 'id' })
             .select());
+        } else if (table === 'item') {
+          // Map and sanitize payload for Supabase 'item' table
+          const remote: Record<string, any> = {};
+          if (payload.id != null) remote.id = payload.id;
+          if (payload.data != null) remote.data = payload.data;
+
+          // Resolve comanda id (prefer numeric id, else lookup by codigo)
+          let comandaId: number | null = null;
+          try {
+            const rawComanda = payload.comanda ?? payload.comanda_id ?? null;
+            if (rawComanda != null && String(rawComanda).trim() !== '' && !Number.isNaN(Number(rawComanda))) {
+              comandaId = Number(rawComanda);
+            } else if (payload.codigo) {
+              const codigo = String(payload.codigo);
+              const resp = await client
+                .from('comanda')
+                .select('id')
+                .eq('codigo', codigo)
+                .limit(1);
+              if (!resp.error && Array.isArray(resp.data) && resp.data.length > 0) {
+                comandaId = Number(resp.data[0].id);
+              }
+            }
+          } catch {}
+
+          // Resolve material id (prefer numeric id, else lookup by name)
+          let materialId: number | null = null;
+          try {
+            const rawMaterial = payload.material ?? payload.material_id ?? payload.materialId ?? null;
+            if (rawMaterial != null && String(rawMaterial).trim() !== '' && !Number.isNaN(Number(rawMaterial))) {
+              materialId = Number(rawMaterial);
+            } else if (payload.material_nome) {
+              const nome = String(payload.material_nome);
+              const resp = await client
+                .from('material')
+                .select('id')
+                .eq('nome', nome)
+                .limit(1);
+              if (!resp.error && Array.isArray(resp.data) && resp.data.length > 0) {
+                materialId = Number(resp.data[0].id);
+              }
+            }
+          } catch {}
+
+          // If we cannot resolve FKs yet, skip for now (keep in queue)
+          if (!comandaId || !materialId) {
+            logger.info('Deferred item push awaiting FK resolution', { comandaId, materialId, payload });
+            continue;
+          }
+
+          remote.comanda = comandaId;
+          remote.material = materialId;
+          remote.preco_kg = Number(payload.preco_kg ?? payload.preco ?? 0) || 0;
+          remote.kg_total = Number(payload.kg_total ?? payload.quantidade ?? payload.kg ?? 0) || 0;
+          remote.valor_total = Number(
+            payload.valor_total ?? payload.total ?? (Number(remote.preco_kg) * Number(remote.kg_total))
+          ) || 0;
+          remote.criado_por = payload.criado_por ?? 'local-user';
+          remote.atualizado_por = payload.atualizado_por ?? 'local-user';
+
+          if (op === 'INSERT') {
+            ({ data, error } = await client
+              .from('item')
+              .insert(remote)
+              .select());
+          } else {
+            ({ data, error } = await client
+              .from('item')
+              .upsert(remote, { onConflict: 'id' })
+              .select());
+          }
         } else {
           ({ data, error } = await client
             .from(table)
@@ -143,7 +212,6 @@ async function pushPending(): Promise<void> {
         }
 
         if (error) throw error;
-        logger.info('✅ Push success', { table, op, recordId, count: Array.isArray(data) ? data.length : 0 });
 
         // Mark local record as synced when applicable
         if (recordId && table && (op === 'INSERT' || op === 'UPDATE')) {
@@ -165,7 +233,6 @@ async function pushPending(): Promise<void> {
         }
         const { error } = await client.from(table).delete().eq('id', recordId);
         if (error) throw error;
-        logger.info('✅ Delete push success', { table, recordId });
         await markSyncItemAsSynced(item.id);
       } else {
         logger.warn('Unknown operation in sync_queue:', op);

@@ -75,10 +75,7 @@ const CadastrarMaterial = () => {
 
       await addToSyncQueue('material', 'INSERT', newId, { id: newId, ...dataToInsert });
       
-      toast({
-        title: "Material cadastrado",
-        description: `${formData.nome} foi salvo${origem_offline ? ' (offline)' : ''}`,
-      });
+      // success toast removed to keep UI silent
       navigate("/");
     } catch (error) {
       toast({

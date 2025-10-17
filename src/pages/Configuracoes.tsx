@@ -71,12 +71,7 @@ const Configuracoes = () => {
     void refreshPendingCount();
 
     const prev = prevStatusRef.current;
-    if (prev && !prev.syncing && status.syncing) {
-      toast({ title: 'Sincronizando…', description: 'Enviando e atualizando dados' });
-    }
-    if (prev && prev.syncing && !status.syncing && !status.lastError) {
-      toast({ title: 'Sincronizado', description: status.lastSyncAt ? new Date(status.lastSyncAt).toLocaleString() : undefined });
-    }
+    // success/info toasts removed to keep UI silent
     if ((status.lastError && !prev?.lastError) || (status.lastError && prev?.lastError !== status.lastError)) {
       toast({ title: 'Erro de sincronização', description: String(status.lastError), variant: 'destructive' as any });
     }
@@ -106,7 +101,7 @@ const Configuracoes = () => {
     try {
       saveSupabaseSettings({ url: url.trim(), anonKey: anonKey.trim() });
       notifyCredentialsUpdated();
-      toast({ title: "Configurações salvas", description: "Use 'Sincronizar Agora' para executar o sync" });
+      // success toast removed to keep UI silent
     } catch (error) {
       toast({ title: "Erro ao salvar", variant: "destructive" });
     } finally {
@@ -122,7 +117,7 @@ const Configuracoes = () => {
     setPrefixSaving(true);
     try {
       setComandaPrefix(normalizePrefix(codigoPrefix));
-      toast({ title: "Prefixo salvo", description: "O código da comanda usará este prefixo" });
+      // success toast removed to keep UI silent
     } catch {
       toast({ title: "Erro ao salvar prefixo", variant: "destructive" });
     } finally {

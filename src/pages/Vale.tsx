@@ -110,7 +110,7 @@ const Vale = () => {
         criado_por: 'local-user',
         atualizado_por: 'local-user'
       });
-      toast({ title: 'Vale registrado', description: `${nome} - ${formatCurrency(Number(valor) || 0)}${origem_offline ? ' (offline)' : ''}` });
+      // success toast removed to keep UI silent
       setConfirmOpen(false);
       setNome("");
       setValor("");

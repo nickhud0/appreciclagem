@@ -51,7 +51,7 @@ const CadastrarDespesa = () => {
       // record_id vazio para não tentar atualizar item local inexistente
       await addToSyncQueue('despesa', 'INSERT', '', payload);
 
-      toast({ title: 'Despesa cadastrada', description: `R$ ${valor} registrada (offline)` });
+      // success toast removed to keep UI silent
       // UX: permanecer na página para cadastrar múltiplas despesas
       setConfirmOpen(false);
       setDescricao("");

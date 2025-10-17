@@ -116,10 +116,7 @@ const TabelaPrecos = () => {
 
       await loadMateriais();
 
-      toast({
-        title: "Preços atualizados",
-        description: `Preços do ${selectedMaterial.nome} atualizados com sucesso`
-      });
+      // success toast removed to keep UI silent
       setIsEditDialogOpen(false);
       setSelectedMaterial(null);
     } catch (error) {
@@ -157,7 +154,7 @@ const TabelaPrecos = () => {
       await addToSyncQueue('material', 'DELETE', id, {} as any);
 
       await loadMateriais();
-      toast({ title: 'Material excluído' });
+      // success toast removed to keep UI silent
       setIsDeleteDialogOpen(false);
       setMaterialToDelete(null);
     } catch (error) {

@@ -67,7 +67,7 @@ const Pendencias = () => {
         criado_por: 'local-user',
         atualizado_por: 'local-user'
       });
-      toast({ title: 'Pendência registrada', description: `${nome} - R$ ${valor}${origem_offline ? ' (offline)' : ''}` });
+      // success toast removed to keep UI silent
       setNome("");
       setValor("");
       setObservacao("");

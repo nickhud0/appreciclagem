@@ -62,7 +62,7 @@ const Fechamento = () => {
       };
       const syntheticId = `fech_${Date.now()}`;
       await addToSyncQueue('fechamento', 'INSERT', syntheticId, payload);
-      toast({ title: 'Fechamento enfileirado', description: 'Sincronize manualmente em Configurações' });
+      // success toast removed to keep UI silent
       setObservacao("");
     } catch (error) {
       toast({ title: 'Erro ao enviar fechamento', variant: 'destructive' });
