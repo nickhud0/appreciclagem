@@ -6,8 +6,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useEffect, useState } from "react";
 import { useToast } from "@/hooks/use-toast";
-import { insert, addToSyncQueue, selectAll, selectWhere } from "@/database";
-import { getSyncStatus } from "@/services/syncEngine";
+import { insert, addToSyncQueue, selectAll, selectWhere, update as dbUpdate } from "@/database";
+import { getSyncStatus, triggerSyncNow } from "@/services/syncEngine";
 import { formatCurrency } from "@/utils/formatters";
 import { logger } from "@/utils/logger";
 import {
@@ -30,10 +30,11 @@ const Vale = () => {
   const [salvando, setSalvando] = useState(false);
   const [vales, setVales] = useState<any[]>([]);
   const [confirmOpen, setConfirmOpen] = useState(false);
+  const [alterandoId, setAlterandoId] = useState<string | number | null>(null);
 
   async function loadVales() {
     try {
-      const confirmadas = await selectAll<any>('vale_false', 'data DESC');
+      const confirmadas = await selectWhere<any>('vale_false', 'status = ?', [0], 'data DESC');
       const pendentesRows = await selectWhere<any>(
         'sync_queue',
         'synced = ? AND table_name = ? AND operation = ?',
@@ -110,6 +111,9 @@ const Vale = () => {
         criado_por: 'local-user',
         atualizado_por: 'local-user'
       });
+      if (status.hasCredentials && status.isOnline) {
+        triggerSyncNow();
+      }
       // success toast removed to keep UI silent
       setConfirmOpen(false);
       setNome("");
@@ -120,6 +124,40 @@ const Vale = () => {
       toast({ title: 'Erro ao salvar', variant: 'destructive' });
     } finally {
       setSalvando(false);
+    }
+  }
+
+  async function handleMarcarComoPago(v: any) {
+    try {
+      const localId = v?.__pending ? v?.record_id : v?.id;
+      if (localId == null || String(localId).trim() === '') {
+        toast({ title: 'Não foi possível identificar o vale.', variant: 'destructive' });
+        return;
+      }
+      setAlterandoId(localId);
+      // Atualiza localmente para pago
+      await dbUpdate('vale_false', { status: 1, atualizado_por: 'local-user' }, 'id = ?', [localId]);
+      // Enfileira UPDATE para Supabase (public.vale)
+      await addToSyncQueue('vale_false', 'UPDATE', String(localId), {
+        id: Number(localId),
+        data: v?.data || new Date().toISOString(),
+        status: true,
+        nome: v?.nome || '(sem nome)',
+        valor: Number(v?.valor) || 0,
+        observacao: v?.observacao || null,
+        criado_por: 'local-user',
+        atualizado_por: 'local-user'
+      });
+      const statusNow = getSyncStatus();
+      if (statusNow.hasCredentials && statusNow.isOnline) {
+        triggerSyncNow();
+      }
+      // Recarrega lista para esconder vales pagos
+      await loadVales();
+    } catch (error) {
+      toast({ title: 'Erro ao atualizar status', variant: 'destructive' });
+    } finally {
+      setAlterandoId(null);
     }
   }
 
@@ -203,7 +241,7 @@ const Vale = () => {
           ) : (
             vales.map((v) => (
               <Card key={v.id} className="p-4 rounded-xl border border-border/20 shadow-sm hover:bg-accent/5 transition-colors">
-                <div className="flex items-center justify-between">
+                <div className="flex items-center justify-between gap-3">
                   <div className="min-w-0">
                     <div className="text-lg font-semibold text-foreground truncate" title={v.nome}>{v.nome}</div>
                     <div className="text-sm text-muted-foreground mt-0.5 truncate">
@@ -213,9 +251,19 @@ const Vale = () => {
                       <div className="text-sm text-muted-foreground mt-0.5 truncate">{v.observacao}</div>
                     ) : null}
                   </div>
-                  {(v.__pending || v.origem_offline === 1) && (
-                    <CloudOff className="h-4 w-4 text-yellow-500" title="Pendente de sincronização" />
-                  )}
+                  <div className="flex items-center gap-2 shrink-0">
+                    {(v.__pending || v.origem_offline === 1) && (
+                      <CloudOff className="h-4 w-4 text-yellow-500" title="Pendente de sincronização" />
+                    )}
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => handleMarcarComoPago(v)}
+                      disabled={alterandoId === (v?.__pending ? v?.record_id : v?.id)}
+                    >
+                      Marcar como pago
+                    </Button>
+                  </div>
                 </div>
               </Card>
             ))

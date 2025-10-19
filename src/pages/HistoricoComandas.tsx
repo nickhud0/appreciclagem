@@ -1,4 +1,4 @@
-import { ArrowLeft, History, CloudOff, Receipt, ShoppingCart, Coins, Calendar, Package, Scale, DollarSign, Smartphone, Clock, Hash } from "lucide-react";
+import { ArrowLeft, History, CloudOff, Receipt, ShoppingCart, Coins, Calendar, Package, Scale, DollarSign, Smartphone, Clock, Hash, X } from "lucide-react";
 import { Device } from '@capacitor/device';
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
@@ -9,6 +9,9 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { formatCurrency, formatNumber } from "@/utils/formatters";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
+import { Input } from "@/components/ui/input";
+import { getSupabaseClient } from "@/services/supabaseClient";
+import { getSyncStatus } from "@/services/syncEngine";
 
 const DEBUG_HISTORICO = false;
 function dbg(...args: any[]) {
@@ -49,6 +52,9 @@ const HistoricoComandas = () => {
   const { toast } = useToast();
   const [debugCounts, setDebugCounts] = useState<{ confirmed: number; pendingComandas: number; pendingItems: number; finalList: number } | null>(null);
   const [pendingItemsByKey, setPendingItemsByKey] = useState<Record<string, any[]>>({});
+  const [searchTerm, setSearchTerm] = useState<string>("");
+  const [searching, setSearching] = useState<boolean>(false);
+  const [searchResults, setSearchResults] = useState<any[]>([]);
 
   useEffect(() => {
     async function load() {
@@ -304,6 +310,76 @@ const HistoricoComandas = () => {
     void load();
   }, []);
 
+  function normalizeText(v: any): string {
+    try { return (v == null ? '' : String(v)).toLowerCase(); } catch { return ''; }
+  }
+
+  function rowMatchesTerm(row: any, term: string): boolean {
+    const t = term.trim().toLowerCase();
+    if (!t) return true;
+    const codigo = normalizeText(getDisplayCodigo(row));
+    const obs = normalizeText(row?.observacoes ?? '');
+    const dataStr = row?.comanda_data ? new Date(row.comanda_data).toLocaleString().toLowerCase() : '';
+    return codigo.includes(t) || obs.includes(t) || dataStr.includes(t);
+  }
+
+  async function performSearch(term: string) {
+    const needle = term.trim();
+    if (!needle) {
+      setSearchResults([]);
+      setSearching(false);
+      return;
+    }
+    setSearching(true);
+    try {
+      // Offline filtering from current unified rows (already combines local + pending)
+      const offline = rows.filter((r) => rowMatchesTerm(r, needle));
+
+      // Online search when possible
+      const status = getSyncStatus();
+      const client = status.isOnline && status.hasCredentials ? getSupabaseClient() : null;
+      let remoteMapped: any[] = [];
+      if (client) {
+        const like = `%${needle}%`;
+        const query = client
+          .from('comanda')
+          .select('id,data,codigo,tipo,observacoes,total')
+          .or(`codigo.ilike.${like},observacoes.ilike.${like}`)
+          .order('data', { ascending: false });
+        const { data, error } = await query;
+        if (!error && Array.isArray(data)) {
+          remoteMapped = data.map((r: any) => ({
+            comanda_id: r.id,
+            comanda_data: r.data,
+            codigo: r.codigo,
+            comanda_tipo: r.tipo,
+            observacoes: r.observacoes ?? null,
+            comanda_total: r.total ?? 0,
+            origem_offline: 0,
+            __is_pending: false,
+            items: []
+          }))
+          // Additional client-side date match (for date search text)
+          .filter((g: any) => rowMatchesTerm(g, needle));
+        }
+      }
+
+      // Deduplicate by codigo (prefer offline/local entries)
+      const seenCodes = new Set(offline.map((r) => getDisplayCodigo(r)).filter(Boolean));
+      const remoteNoDup = remoteMapped.filter((g) => {
+        const code = getDisplayCodigo(g);
+        return code ? !seenCodes.has(code) : true;
+      });
+
+      const merged = [...offline, ...remoteNoDup];
+      setSearchResults(merged);
+    } catch {
+      setSearchResults([]);
+    } finally {
+      setSearching(false);
+    }
+  }
+
   async function openItemsDialog(group: any, index: number) {
     // Determine codigo as primary key for item fetch/merge
     const codigo = getDisplayCodigo(group);
@@ -447,13 +523,33 @@ const HistoricoComandas = () => {
           </div>
         </div>
 
+        {/* Barra de busca */}
+        <div className="mb-4 relative">
+          <Input
+            placeholder="Buscar por código, data ou observação..."
+            value={searchTerm}
+            onChange={(e) => { const v = e.target.value; setSearchTerm(v); void performSearch(v); }}
+            className="pr-10"
+          />
+          {searchTerm && (
+            <button
+              type="button"
+              aria-label="Limpar busca"
+              onClick={() => { setSearchTerm(''); setSearchResults([]); }}
+              className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          )}
+        </div>
+
         {loading ? (
           <div className="text-center text-muted-foreground">Carregando...</div>
-        ) : rows.length === 0 ? (
+        ) : (searchTerm ? searchResults.length === 0 : rows.length === 0) ? (
           <Card className="p-6 text-center text-muted-foreground">Nenhuma comanda recente.</Card>
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-            {rows.map((c, idx) => {
+            {(searchTerm ? searchResults : rows).map((c, idx) => {
               return (
                 <Card
                   key={`${c.comanda_id ?? 'pending'}-${idx}`}

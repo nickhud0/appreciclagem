@@ -7,6 +7,7 @@ import { useEffect, useState } from "react";
 import { executeQuery, addToSyncQueue } from "@/database";
 import { useToast } from "@/hooks/use-toast";
 import { getSyncStatus } from "@/services/syncEngine";
+import { getSupabaseClient } from "@/services/supabaseClient";
 import { Device } from '@capacitor/device';
 
 const Fechamento = () => {
@@ -49,9 +50,12 @@ const Fechamento = () => {
         const info = await Device.getInfo();
         deviceName = (info as any)?.name || (info as any)?.model || 'Dispositivo Local';
       } catch {}
-      const payload = {
-        desde_data: data.desde_data,
-        ate_data: data.ate_data,
+      // Quando online: envia diretamente para Supabase (public.fechamento)
+      const client = getSupabaseClient();
+      if (!client) throw new Error('Cliente Supabase não configurado');
+      const nowIso = new Date().toISOString();
+      const { error } = await client.from('fechamento').insert({
+        data: nowIso,
         compra: data.compra,
         despesa: data.despesa,
         venda: data.venda,
@@ -59,9 +63,8 @@ const Fechamento = () => {
         observacao: observacao || null,
         criado_por: deviceName,
         atualizado_por: 'local-user'
-      };
-      const syntheticId = `fech_${Date.now()}`;
-      await addToSyncQueue('fechamento', 'INSERT', syntheticId, payload);
+      });
+      if (error) throw error;
       // success toast removed to keep UI silent
       setObservacao("");
     } catch (error) {
@@ -114,7 +117,7 @@ const Fechamento = () => {
             <textarea id="obs" value={observacao} onChange={(e) => setObservacao(e.target.value)} className="w-full mt-1 p-2 border border-input rounded-md bg-background text-sm min-h-[100px]" placeholder="Digite uma observação" />
           </div>
 
-          <Button onClick={handleFechamento} disabled={processing || !data} className="w-full">
+          <Button onClick={handleFechamento} disabled={processing || !data || !(getSyncStatus().hasCredentials && getSyncStatus().isOnline)} className="w-full">
             <CheckCircle2 className="h-4 w-4 mr-2" /> {processing ? 'Processando...' : 'Realizar Fechamento'}
           </Button>
         </div>

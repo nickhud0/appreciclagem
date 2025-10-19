@@ -204,6 +204,75 @@ async function pushPending(): Promise<void> {
               .upsert(remote, { onConflict: 'id' })
               .select());
           }
+        } else if (table === 'despesa') {
+          // Sanitize and map payload for Supabase 'despesa' table
+          const remote: Record<string, any> = {};
+          if (payload.id != null) remote.id = payload.id;
+          if (payload.data != null) remote.data = payload.data;
+          if (payload.descricao != null) remote.descricao = payload.descricao;
+          if (payload.valor != null) remote.valor = Number(payload.valor) || 0;
+          if (payload.criado_por != null) remote.criado_por = payload.criado_por;
+          if (payload.atualizado_por != null) remote.atualizado_por = payload.atualizado_por;
+
+          if (op === 'INSERT') {
+            ({ data, error } = await client
+              .from('despesa')
+              .insert(remote)
+              .select());
+          } else {
+            ({ data, error } = await client
+              .from('despesa')
+              .upsert(remote, { onConflict: 'id' })
+              .select());
+          }
+        } else if (table === 'vale_false') {
+          // Map vale_false (local view of pendentes) to Supabase 'vale'
+          const remote: Record<string, any> = {};
+          if (payload.id != null) remote.id = payload.id;
+          if (payload.data != null) remote.data = payload.data;
+          // Local uses 0/1; Supabase expects boolean
+          if (payload.status != null) remote.status = !!payload.status;
+          if (payload.nome != null) remote.nome = payload.nome;
+          if (payload.valor != null) remote.valor = Number(payload.valor) || 0;
+          if (payload.observacao != null) remote.observacao = payload.observacao;
+          if (payload.criado_por != null) remote.criado_por = payload.criado_por;
+          if (payload.atualizado_por != null) remote.atualizado_por = payload.atualizado_por;
+
+          if (op === 'INSERT') {
+            ({ data, error } = await client
+              .from('vale')
+              .insert(remote)
+              .select());
+          } else {
+            ({ data, error } = await client
+              .from('vale')
+              .upsert(remote, { onConflict: 'id' })
+              .select());
+          }
+        } else if (table === 'pendencia_false') {
+          // Map pendencia_false (local pending view) to Supabase 'pendencia'
+          const remote: Record<string, any> = {};
+          if (payload.id != null) remote.id = payload.id;
+          if (payload.data != null) remote.data = payload.data;
+          if (payload.status != null) remote.status = !!payload.status;
+          if (payload.nome != null) remote.nome = payload.nome;
+          if (payload.valor != null) remote.valor = Number(payload.valor) || 0;
+          if (payload.tipo != null) remote.tipo = payload.tipo; // enum pendencia_tipo
+          if (payload.observacao != null) remote.observacao = payload.observacao;
+          if (payload.criado_por != null) remote.criado_por = payload.criado_por;
+          if (payload.atualizado_por != null) remote.atualizado_por = payload.atualizado_por;
+
+          if (op === 'INSERT') {
+            ({ data, error } = await client
+              .from('pendencia')
+              .insert(remote)
+              .select());
+          } else {
+            ({ data, error } = await client
+              .from('pendencia')
+              .upsert(remote, { onConflict: 'id' })
+              .select());
+          }
         } else {
           ({ data, error } = await client
             .from(table)
