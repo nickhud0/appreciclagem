@@ -422,29 +422,29 @@ const HistoricoComandas = () => {
       const resultItems: any[] = [];
       const confirmedItemsLocal: any[] = [];
       const pendingItemsLocal: any[] = [];
-      // Confirmed items via local SQLite join with material
+      // Confirmed items via local SQLite comanda_20 snapshot (view pull) joined with material for names
       const comandaId = group?.comanda_id ? Number(group.comanda_id) : NaN;
       if (!Number.isNaN(comandaId) && comandaId) {
         try {
-          const confirmedItems = await selectWhere<any>('item', 'comanda = ?', [comandaId]);
-          const materialIds = Array.from(new Set(confirmedItems.map((it: any) => Number(it.material ?? it.material_id)).filter((v: any) => Number.isFinite(v))));
+          const confirmedRows = await selectWhere<any>('comanda_20', 'comanda_id = ?', [comandaId]);
+          const materialIds = Array.from(new Set(confirmedRows.map((r: any) => Number(r.material_id)).filter((v: any) => Number.isFinite(v))));
           let materialMap: Record<number, any> = {};
           if (materialIds.length > 0) {
             const placeholders = materialIds.map(() => '?').join(', ');
             const mats = await selectWhere<any>('material', `id IN (${placeholders})`, materialIds);
             materialMap = Object.fromEntries(mats.map((m: any) => [Number(m.id), m]));
           }
-          for (const it of confirmedItems) {
-            const kg = Number(it.kg_total ?? it.quantidade ?? 0) || 0;
-            const preco = Number(it.preco_kg ?? it.preco ?? 0) || 0;
-            const total = Number(it.valor_total ?? it.total ?? (kg * preco)) || 0;
+          for (const r of confirmedRows) {
+            const kg = Number(r.kg_total ?? 0) || 0;
+            const preco = Number(r.preco_kg ?? 0) || 0;
+            const total = Number(r.item_valor_total ?? (kg * preco)) || 0;
             if ((Number.isNaN(kg) || kg <= 0) && (Number.isNaN(total) || total <= 0)) continue;
-            const matId = Number(it.material ?? it.material_id) || 0;
+            const matId = Number(r.material_id) || 0;
             const mat = materialMap[matId] || null;
             const itemNorm = {
               material_id: matId || null,
-              material_nome: mat?.nome ?? it.material_nome ?? '—',
-              material_categoria: mat?.categoria ?? it.material_categoria ?? '—',
+              material_nome: mat?.nome ?? '—',
+              material_categoria: mat?.categoria ?? '—',
               kg_total: kg,
               preco_kg: preco,
               item_valor_total: total,

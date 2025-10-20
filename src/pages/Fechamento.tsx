@@ -3,12 +3,13 @@ import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { executeQuery, addToSyncQueue } from "@/database";
 import { useToast } from "@/hooks/use-toast";
-import { getSyncStatus } from "@/services/syncEngine";
+import { getSyncStatus, triggerSyncNow } from "@/services/syncEngine";
 import { getSupabaseClient } from "@/services/supabaseClient";
 import { Device } from '@capacitor/device';
+import { formatCurrency } from "@/utils/formatters";
 
 const Fechamento = () => {
   const navigate = useNavigate();
@@ -17,12 +18,27 @@ const Fechamento = () => {
   const [observacao, setObservacao] = useState("");
   const [loading, setLoading] = useState(true);
   const [processing, setProcessing] = useState(false);
+  const [historico, setHistorico] = useState<any[]>([]);
+  const submittingRef = useRef<boolean>(false);
+  function formatDateBullet(value?: string | null) {
+    try {
+      if (!value) return '—';
+      const d = new Date(value);
+      const dateStr = d.toLocaleDateString();
+      const timeStr = d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+      return `${dateStr} • ${timeStr}`;
+    } catch {
+      return String(value || '—');
+    }
+  }
 
   async function load() {
     try {
       setLoading(true);
       const rows = await executeQuery<any>(`SELECT desde_data, ate_data, compra, despesa, venda, lucro FROM calculo_fechamento ORDER BY rowid DESC LIMIT 1`);
       setData(rows[0] || null);
+      const hist = await executeQuery<any>(`SELECT id, data, compra, despesa, venda, lucro, observacao FROM fechamento_mes ORDER BY data DESC`);
+      setHistorico(Array.isArray(hist) ? hist : []);
     } finally {
       setLoading(false);
     }
@@ -33,6 +49,7 @@ const Fechamento = () => {
   }, []);
 
   async function handleFechamento() {
+    if (submittingRef.current) return; // bloqueia cliques múltiplos
     const status = getSyncStatus();
     if (!(status.hasCredentials && status.isOnline)) {
       toast({ title: 'Sem conexão', description: 'Conecte-se à nuvem para fechar.', variant: 'destructive' });
@@ -42,6 +59,7 @@ const Fechamento = () => {
       toast({ title: 'Sem dados de fechamento', variant: 'destructive' });
       return;
     }
+    submittingRef.current = true;
     setProcessing(true);
     try {
       // Identify device for attribution
@@ -67,10 +85,16 @@ const Fechamento = () => {
       if (error) throw error;
       // success toast removed to keep UI silent
       setObservacao("");
+      // Disparar sincronização para atualizar views (calculo_fechamento/fechamento_mes)
+      try { triggerSyncNow(); } catch {}
+      // Atualizar a view 5 segundos após o envio
+      await new Promise((resolve) => setTimeout(resolve, 5000));
+      await load();
     } catch (error) {
       toast({ title: 'Erro ao enviar fechamento', variant: 'destructive' });
     } finally {
       setProcessing(false);
+      submittingRef.current = false;
     }
   }
 
@@ -94,23 +118,47 @@ const Fechamento = () => {
         </div>
 
         <div className="space-y-4">
-          <div className="flex items-center justify-between">
-            <div className="text-sm text-muted-foreground">
-              {loading ? 'Carregando...' : data ? (
-                <div className="grid grid-cols-2 gap-3">
-                  <div>Desde: <span className="font-medium text-foreground">{data.desde_data || '—'}</span></div>
-                  <div>Até: <span className="font-medium text-foreground">{data.ate_data || '—'}</span></div>
-                  <div>Compra: <span className="font-medium text-foreground">{data.compra ?? '—'}</span></div>
-                  <div>Despesa: <span className="font-medium text-foreground">{data.despesa ?? '—'}</span></div>
-                  <div>Venda: <span className="font-medium text-foreground">{data.venda ?? '—'}</span></div>
-                  <div>Lucro: <span className="font-medium text-foreground">{data.lucro ?? '—'}</span></div>
-                </div>
-              ) : 'Sem dados' }
+          {/* Totais - visual modernizado */}
+          {loading ? (
+            <div className="text-sm text-muted-foreground">Carregando...</div>
+          ) : data ? (
+            <div className="space-y-3">
+              {/* Período */}
+              <div className="grid grid-cols-2 gap-3 text-xs sm:text-sm text-muted-foreground">
+                <div>Desde: <span className="font-medium text-foreground">{formatDateBullet(data.desde_data)}</span></div>
+                <div className="text-right">Até: <span className="font-medium text-foreground">{formatDateBullet(data.ate_data)}</span></div>
+              </div>
+              {/* Cards financeiros */}
+              <div className="grid grid-cols-2 gap-3">
+                <Card className="p-3 sm:p-4 rounded-xl border border-amber-200 bg-amber-50">
+                  <div className="text-xs sm:text-sm text-muted-foreground">Compra</div>
+                  <div className="text-xl sm:text-2xl font-bold text-[#eab308]">
+                    {data.compra != null ? formatCurrency(Number(data.compra) || 0) : '—'}
+                  </div>
+                </Card>
+                <Card className="p-3 sm:p-4 rounded-xl border border-green-200 bg-green-50">
+                  <div className="text-xs sm:text-sm text-muted-foreground">Venda</div>
+                  <div className="text-xl sm:text-2xl font-bold text-[#22c55e]">
+                    {data.venda != null ? formatCurrency(Number(data.venda) || 0) : '—'}
+                  </div>
+                </Card>
+                <Card className="p-3 sm:p-4 rounded-xl border border-red-200 bg-red-50">
+                  <div className="text-xs sm:text-sm text-muted-foreground">Despesa</div>
+                  <div className="text-xl sm:text-2xl font-bold text-[#ef4444]">
+                    {data.despesa != null ? formatCurrency(Number(data.despesa) || 0) : '—'}
+                  </div>
+                </Card>
+                <Card className="p-3 sm:p-4 rounded-xl border border-muted-foreground/20 bg-card">
+                  <div className="text-xs sm:text-sm text-muted-foreground">Lucro</div>
+                  <div className={`text-xl sm:text-2xl font-bold ${Number(data.lucro || 0) >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                    {data.lucro != null ? formatCurrency(Number(data.lucro) || 0) : '—'}
+                  </div>
+                </Card>
+              </div>
             </div>
-            <Button variant="outline" onClick={() => load()}>
-              <RefreshCw className="h-4 w-4 mr-2" /> Atualizar
-            </Button>
-          </div>
+          ) : (
+            <div className="text-sm text-muted-foreground">Sem dados</div>
+          )}
 
           <div>
             <Label htmlFor="obs">Observação (opcional)</Label>
@@ -120,6 +168,32 @@ const Fechamento = () => {
           <Button onClick={handleFechamento} disabled={processing || !data || !(getSyncStatus().hasCredentials && getSyncStatus().isOnline)} className="w-full">
             <CheckCircle2 className="h-4 w-4 mr-2" /> {processing ? 'Processando...' : 'Realizar Fechamento'}
           </Button>
+
+          {/* Histórico de fechamentos do mês (SQLite fechamento_mes) */}
+          <div className="mt-2 space-y-3">
+            {loading ? (
+              <div className="text-center text-muted-foreground">Carregando histórico...</div>
+            ) : historico.length === 0 ? (
+              <Card className="p-4 text-center text-muted-foreground bg-muted/30 border border-border/20 rounded-xl">Nenhum fechamento registrado.</Card>
+            ) : (
+              historico.map((f: any) => (
+                <Card key={f.id ?? `${f.data}-${Math.random()}`} className="p-4 rounded-xl border border-border/20 shadow-sm bg-muted/20">
+                  <div className="flex items-center justify-between mb-2">
+                    <div className="text-xs sm:text-sm text-muted-foreground">{f.data ? new Date(f.data).toLocaleString() : '—'}</div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-3 text-sm">
+                    <div>Compra: <span className="font-semibold text-[#eab308]">{formatCurrency(Number(f.compra) || 0)}</span></div>
+                    <div>Venda: <span className="font-semibold text-[#22c55e]">{formatCurrency(Number(f.venda) || 0)}</span></div>
+                    <div>Despesa: <span className="font-semibold text-[#ef4444]">{formatCurrency(Number(f.despesa) || 0)}</span></div>
+                    <div>Lucro: <span className={`font-semibold ${Number(f.lucro || 0) >= 0 ? 'text-green-600' : 'text-red-600'}`}>{formatCurrency(Number(f.lucro) || 0)}</span></div>
+                  </div>
+                  {f.observacao && (
+                    <div className="mt-2 text-xs text-muted-foreground">Obs: {f.observacao}</div>
+                  )}
+                </Card>
+              ))
+            )}
+          </div>
         </div>
       </Card>
     </div>

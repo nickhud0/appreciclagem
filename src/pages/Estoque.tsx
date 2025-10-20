@@ -14,10 +14,12 @@ const Estoque = () => {
   const [estoque, setEstoque] = useState<EstoqueRow[]>([]);
   const [busca, setBusca] = useState("");
   const [loading, setLoading] = useState(true);
+  
 
   const refresh = useCallback(async () => {
     const rows = await selectAll<EstoqueRow>('estoque', 'material ASC');
     setEstoque(rows);
+    
   }, []);
 
   useEffect(() => {

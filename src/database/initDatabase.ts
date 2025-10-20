@@ -284,6 +284,17 @@ CREATE TABLE IF NOT EXISTS sync_queue (
   synced INTEGER DEFAULT 0      -- 0 = pendente, 1 = sincronizado
 );
 
+-- ---------------------------------------------------------------------
+-- 20) resumo_estoque_financeiro (resumo financeiro do estoque)
+-- ---------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS resumo_estoque_financeiro (
+  total_kg REAL,
+  total_custo REAL,
+  total_venda_potencial REAL,
+  lucro_potencial REAL,
+  updated_at TEXT
+);
+
 COMMIT;
 `;
 

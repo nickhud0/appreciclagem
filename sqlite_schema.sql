@@ -261,4 +261,9 @@ CREATE TABLE IF NOT EXISTS sync_queue (
   synced INTEGER DEFAULT 0      -- 0 = pendente, 1 = sincronizado
 );
 
+-- ---------------------------------------------------------------------
+-- 20) resumo_estoque_financeiro (resumo financeiro do estoque)
+-- ---------------------------------------------------------------------
+-- (removido) resumo_estoque_financeiro não é necessário
+
 COMMIT;
