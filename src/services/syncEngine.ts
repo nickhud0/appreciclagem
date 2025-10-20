@@ -43,7 +43,9 @@ const PULL_TABLES: string[] = [
   'ultimas_20',
   'estoque',
   'despesa_mes',
-  'calculo_fechamento'
+  'calculo_fechamento',
+  // View synced into local table with single-row replace
+  'resumo_estoque_financeiro'
 ];
 
 // Tables that contain an 'origem_offline' flag locally and must preserve
@@ -355,10 +357,28 @@ async function pullAll(): Promise<void> {
 
   for (const table of PULL_TABLES) {
     try {
-      const { data, error } = await client.from(table).select('*');
-      if (error) throw error;
-      const rows = Array.isArray(data) ? data : [];
-      await replaceTableData(table, rows);
+      if (table === 'resumo_estoque_financeiro') {
+        const { data, error } = await client.from('resumo_estoque_financeiro').select('*');
+        if (error) throw error;
+        const now = new Date().toISOString();
+        const rows = Array.isArray(data) ? data : [];
+        // Ensure single-row replace; if API returns empty, keep table cleared
+        const normalized = rows.length > 0
+          ? [{
+              total_kg: Number(rows[0]?.total_kg ?? 0) || 0,
+              total_custo: Number(rows[0]?.total_custo ?? 0) || 0,
+              total_venda_potencial: Number(rows[0]?.total_venda_potencial ?? 0) || 0,
+              lucro_potencial: Number(rows[0]?.lucro_potencial ?? 0) || 0,
+              updated_at: now
+            }]
+          : [];
+        await replaceTableData('resumo_estoque_financeiro', normalized);
+      } else {
+        const { data, error } = await client.from(table).select('*');
+        if (error) throw error;
+        const rows = Array.isArray(data) ? data : [];
+        await replaceTableData(table, rows);
+      }
     } catch (error) {
       logger.error('Pull failed for table', table, error);
       // Continue with next table

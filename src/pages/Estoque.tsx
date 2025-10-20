@@ -4,8 +4,8 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { useEffect, useMemo, useRef, useState, useCallback } from "react";
-import { selectAll } from "@/database";
-import { formatCurrency } from "@/utils/formatters";
+import { selectAll, executeQuery } from "@/database";
+import { formatCurrency, formatWeight, formatDateTime } from "@/utils/formatters";
 import { onSyncStatus, type SyncStatus } from "@/services/syncEngine";
 import type { Estoque as EstoqueRow } from "@/database";
 
@@ -14,12 +14,28 @@ const Estoque = () => {
   const [estoque, setEstoque] = useState<EstoqueRow[]>([]);
   const [busca, setBusca] = useState("");
   const [loading, setLoading] = useState(true);
+  type ResumoEstoqueFinanceiro = {
+    total_kg: number | null;
+    total_custo: number | null;
+    total_venda_potencial: number | null;
+    lucro_potencial: number | null;
+    updated_at?: string | null;
+  };
+  const [resumo, setResumo] = useState<ResumoEstoqueFinanceiro | null>(null);
   
 
   const refresh = useCallback(async () => {
     const rows = await selectAll<EstoqueRow>('estoque', 'material ASC');
     setEstoque(rows);
-    
+
+    try {
+      const resumoRows = await executeQuery<ResumoEstoqueFinanceiro>(
+        'SELECT total_kg, total_custo, total_venda_potencial, lucro_potencial, updated_at FROM resumo_estoque_financeiro LIMIT 1'
+      );
+      setResumo(resumoRows[0] ?? null);
+    } catch {
+      setResumo(null);
+    }
   }, []);
 
   useEffect(() => {
@@ -52,11 +68,11 @@ const Estoque = () => {
     return estoque.filter((e) => (e.material || '').toLowerCase().includes(q));
   }, [estoque, busca]);
 
-  const StatBlock = ({ title, value = "—" }: { title: string; value?: string | number }) => {
+  const StatBlock = ({ title, value = "—", valueClassName }: { title: string; value?: string | number; valueClassName?: string }) => {
     return (
       <Card className="p-3 shadow-card">
         <div className="text-xs text-muted-foreground">{title}</div>
-        <div className="mt-1 text-xl font-bold">{value}</div>
+        <div className={`mt-1 text-xl font-bold ${valueClassName || ''}`}>{value}</div>
       </Card>
     );
   };
@@ -92,12 +108,38 @@ const Estoque = () => {
         </div>
 
         {/* Indicadores (visual somente) */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
-          <StatBlock title="KG" />
-          <StatBlock title="Custo" />
-          <StatBlock title="Potencial" />
-          <StatBlock title="Lucro" />
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-2">
+          <StatBlock
+            title="KG"
+            value={resumo?.total_kg != null ? formatWeight(Number(resumo.total_kg) || 0) : '—'}
+          />
+          <StatBlock
+            title="Custo"
+            value={resumo?.total_custo != null ? formatCurrency(Number(resumo.total_custo) || 0) : '—'}
+          />
+          <StatBlock
+            title="Potencial"
+            value={resumo?.total_venda_potencial != null ? formatCurrency(Number(resumo.total_venda_potencial) || 0) : '—'}
+          />
+          <StatBlock
+            title="Lucro"
+            value={resumo?.lucro_potencial != null ? formatCurrency(Number(resumo.lucro_potencial) || 0) : '—'}
+            valueClassName={
+              resumo?.lucro_potencial == null
+                ? 'text-muted-foreground'
+                : Number(resumo.lucro_potencial) > 0
+                  ? 'text-success'
+                  : Number(resumo.lucro_potencial) < 0
+                    ? 'text-destructive'
+                    : 'text-muted-foreground'
+            }
+          />
         </div>
+        {resumo?.updated_at ? (
+          <div className="text-xs text-muted-foreground mb-6">Atualizado em: {formatDateTime(resumo.updated_at)}</div>
+        ) : (
+          <div className="mb-6" />
+        )}
 
         {loading ? (
           <div className="text-center text-muted-foreground">Carregando...</div>
