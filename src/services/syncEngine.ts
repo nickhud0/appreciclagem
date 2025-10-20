@@ -358,6 +358,16 @@ async function pullAll(): Promise<void> {
   for (const table of PULL_TABLES) {
     try {
       if (table === 'resumo_estoque_financeiro') {
+        // Ensure table exists on previously-initialized databases
+        await executeStatement(`
+          CREATE TABLE IF NOT EXISTS resumo_estoque_financeiro (
+            total_kg REAL,
+            total_custo REAL,
+            total_venda_potencial REAL,
+            lucro_potencial REAL,
+            updated_at TEXT
+          )
+        `);
         const { data, error } = await client.from('resumo_estoque_financeiro').select('*');
         if (error) throw error;
         const now = new Date().toISOString();
