@@ -52,6 +52,15 @@ const Estoque = () => {
     return estoque.filter((e) => (e.material || '').toLowerCase().includes(q));
   }, [estoque, busca]);
 
+  const StatBlock = ({ title, value = "—" }: { title: string; value?: string | number }) => {
+    return (
+      <Card className="p-3 shadow-card">
+        <div className="text-xs text-muted-foreground">{title}</div>
+        <div className="mt-1 text-xl font-bold">{value}</div>
+      </Card>
+    );
+  };
+
   return (
     <div className="min-h-screen bg-background p-4">
       {/* Header */}
@@ -80,6 +89,14 @@ const Estoque = () => {
             onChange={(e) => setBusca(e.target.value)}
             className="pl-10"
           />
+        </div>
+
+        {/* Indicadores (visual somente) */}
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
+          <StatBlock title="KG" />
+          <StatBlock title="Custo" />
+          <StatBlock title="Potencial" />
+          <StatBlock title="Lucro" />
         </div>
 
         {loading ? (
