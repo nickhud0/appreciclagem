@@ -189,7 +189,7 @@ const Venda = () => {
             </Button>
           </Card>
         ) : (
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4">
+          <div className="grid grid-cols-3 gap-3 sm:grid-cols-3 md:grid-cols-4">
             {materiais.map((material, index) => {
               // Cores que mudam a cada 3 materiais
               const colorIndex = Math.floor(index / 3) % 3;
@@ -210,7 +210,7 @@ const Venda = () => {
                     <CloudOff className="absolute left-2 top-2 h-4 w-4 text-orange-700" />
                   )}
                   <Package className={`h-6 w-6 ${currentColor.text} mb-2`} />
-                  <h3 className="w-full font-semibold text-foreground text-sm leading-snug mb-1 break-words text-center sm:text-base sm:leading-tight">
+                  <h3 className="w-full font-semibold text-foreground text-base leading-tight mb-1 break-words text-center sm:text-lg sm:leading-tight">
                     {material.nome}
                   </h3>
                   <div className="flex items-center gap-2">
