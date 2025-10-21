@@ -70,6 +70,30 @@ const PreviewComanda = () => {
     return itens.reduce((acc, it) => acc + (Number(it.item_valor_total) || 0), 0);
   }, [header, itens]);
 
+  const groupedItens = useMemo(() => {
+    const map = new Map<string, { nome: string; kg: number; total: number }>();
+    for (const it of itens) {
+      const key = (it.material_id != null && !Number.isNaN(Number(it.material_id)))
+        ? String(it.material_id)
+        : (it.material_nome || '—');
+      const nome = it.material_nome || `#${it.material_id ?? ''}`;
+      const kg = Number(it.kg_total || 0) || 0;
+      const preco = Number(it.preco_kg || 0) || 0;
+      const subtotal = Number(it.item_valor_total || (kg * preco)) || 0;
+      const prev = map.get(key) || { nome, kg: 0, total: 0 };
+      prev.nome = nome;
+      prev.kg += kg;
+      prev.total += subtotal;
+      map.set(key, prev);
+    }
+    return Array.from(map.values()).map((g) => ({
+      nome: g.nome,
+      kg: g.kg,
+      total: g.total,
+      precoMedio: g.kg > 0 ? Number((g.total / g.kg).toFixed(2)) : 0
+    }));
+  }, [itens]);
+
   if (loading) {
     return (
       <div className="min-h-screen bg-background p-4">
@@ -124,22 +148,16 @@ const PreviewComanda = () => {
           <hr className="my-2 border-t border-gray-300" />
 
           {/* Itens */}
-          {itens.length === 0 ? (
+          {groupedItens.length === 0 ? (
             <div className="text-center text-sm">Nenhum item</div>
           ) : (
             <div className="space-y-2">
-              {itens.map((it, idx) => {
-                const nome = it.material_nome || `#${it.material_id ?? ''}`;
-                const kg = `${formatNumber(Number(it.kg_total || 0), 3)} kg`;
-                const preco = formatCurrency(Number(it.preco_kg) || 0);
-                const total = formatCurrency(Number(it.item_valor_total) || 0);
-                return (
-                  <div key={idx} className="text-base whitespace-normal break-words">
-                    <div className="font-medium">{nome}</div>
-                    <div>{`${kg} x ${preco} = ${total}`}</div>
-                  </div>
-                );
-              })}
+              {groupedItens.map((g, idx) => (
+                <div key={idx} className="text-base whitespace-normal break-words">
+                  <div className="font-medium">{g.nome}</div>
+                  <div>{`${formatNumber(g.kg, 3)} kg x ${formatCurrency(g.precoMedio)} = ${formatCurrency(g.total)}`}</div>
+                </div>
+              ))}
             </div>
           )}
 
