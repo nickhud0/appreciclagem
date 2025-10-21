@@ -8,7 +8,8 @@ import {
   executeTransaction,
   executeStatement,
   insert,
-  update
+  update,
+  deleteFrom
 } from '@/database';
 
 type Listener = (status: SyncStatus) => void;
@@ -111,6 +112,21 @@ async function pushPending(): Promise<void> {
       payload = JSON.parse(item.payload);
     } catch (e) {
       logger.error('Invalid JSON payload in sync_queue id=' + item.id);
+      continue;
+    }
+
+    // Local-only entries: do not push to Supabase; mark and remove from queue
+    if (table === 'ultimas_20') {
+      try {
+        await markSyncItemAsSynced(item.id);
+      } catch (e) {
+        logger.warn('Could not mark local-only item as synced, id=' + item.id, e);
+      }
+      try {
+        await deleteFrom('sync_queue', 'id = ?', [item.id]);
+      } catch (e) {
+        logger.warn('Could not delete local-only item from sync_queue id=' + item.id, e);
+      }
       continue;
     }
 
@@ -296,6 +312,12 @@ async function pushPending(): Promise<void> {
         }
 
         await markSyncItemAsSynced(item.id);
+        try {
+          await deleteFrom('sync_queue', 'id = ?', [item.id]);
+        } catch (e) {
+          // Non-fatal: if delete fails, item stays marked as synced
+          logger.warn('Could not delete synced item from sync_queue id=' + item.id, e);
+        }
       } else if (op === 'DELETE') {
         if (!recordId) {
           // cannot delete without id
@@ -305,6 +327,11 @@ async function pushPending(): Promise<void> {
         const { error } = await client.from(table).delete().eq('id', recordId);
         if (error) throw error;
         await markSyncItemAsSynced(item.id);
+        try {
+          await deleteFrom('sync_queue', 'id = ?', [item.id]);
+        } catch (e) {
+          logger.warn('Could not delete synced item from sync_queue id=' + item.id, e);
+        }
       } else {
         logger.warn('Unknown operation in sync_queue:', op);
         // skip unknown operations but don't mark as synced
