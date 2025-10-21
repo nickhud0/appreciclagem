@@ -53,9 +53,9 @@ const Index = () => {
         </div>
       </div>
 
-      {/* Botão Principal - Imprimir Última Comanda */}
+      {/* Botão Principal - Imprimir Última Comanda (abre Preview) */}
       <Card className="mb-6 p-4 bg-gradient-to-r from-success to-success/80 border-0 shadow-lg">
-        <Link to="/imprimir-comanda">
+        <Link to="/preview-comanda">
           <Button 
             variant="ghost" 
             className="w-full h-16 text-success-foreground hover:bg-white/10"

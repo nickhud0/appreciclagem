@@ -18,6 +18,7 @@ import Vale from "./pages/Vale";
 import Pendencias from "./pages/Pendencias";
 import Configuracoes from "./pages/Configuracoes";
 import ImprimirComanda from "./pages/ImprimirComanda";
+import PreviewComanda from "./pages/PreviewComanda";
 import { Toaster } from "@/components/ui/toaster";
 import SyncIndicator from "@/components/SyncIndicator";
 
@@ -50,6 +51,7 @@ const App = () => {
             <Route path="/configuracoes" element={<Configuracoes />} />
             <Route path="/imprimir-comanda" element={<ImprimirComanda />} />
             <Route path="/imprimir-comanda/:comandaId" element={<ImprimirComanda />} />
+            <Route path="/preview-comanda" element={<PreviewComanda />} />
             <Route path="*" element={<NotFound />} />
           </Routes>
         </Router>
