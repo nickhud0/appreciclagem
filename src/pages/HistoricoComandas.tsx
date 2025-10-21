@@ -682,38 +682,47 @@ const HistoricoComandas = () => {
                     <div className="text-right">Total</div>
                   </div>
                   <div className="divide-y divide-muted-foreground/20">
-                    {selectedGroup.items
-                      .filter((it: any) => {
+                    {(() => {
+                      // Agrupar em memória por material_id/nome
+                      const groups = new Map<string, { nome: string; kg: number; total: number }>();
+                      for (const it of (selectedGroup.items || [])) {
+                        const material = materialsById[Number(it.material_id)] || null;
+                        const nome = (it.material_nome ?? material?.nome ?? '—') as string;
+                        const key = String(it.material_id ?? nome);
                         const kg = Number(it.kg_total) || 0;
-                        const vt = Number(it.item_valor_total) || 0;
-                        return !(kg === 0 && vt === 0);
-                      })
-                      .map((it: any, i: number) => {
-                      const material = materialsById[Number(it.material_id)] || null;
-                      const kg = Number(it.kg_total) || 0;
-                      const precoKg = Number(it.preco_kg) || 0;
-                      const subtotal = Number(it.item_valor_total) || (kg * precoKg);
-                      const nome = it.material_nome ?? material?.nome ?? '—';
+                        const preco = Number(it.preco_kg) || 0;
+                        const subtotal = Number(it.item_valor_total) || (kg * preco);
+                        if (kg === 0 && subtotal === 0) continue;
+                        const prev = groups.get(key) || { nome, kg: 0, total: 0 };
+                        prev.nome = nome;
+                        prev.kg += kg;
+                        prev.total += subtotal;
+                        groups.set(key, prev);
+                      }
+                      const merged = Array.from(groups.values());
+                      return merged.map((g, i) => {
+                        const precoMedio = g.kg > 0 ? g.total / g.kg : 0;
                         return (
                           <div key={i} className="grid grid-cols-[2fr_1fr_1fr_1fr] md:grid-cols-[2fr_1fr_1fr_1fr] gap-2 md:gap-4 px-3 py-3 items-center hover:bg-muted/30 active:bg-muted/40 transition-colors border-b border-muted-foreground/20 last:border-b-0">
                             <div className="flex items-center gap-2 truncate">
                               <Package className="h-4 w-4 text-muted-foreground shrink-0" />
-                              <div className="text-base font-semibold text-foreground truncate" title={nome}>
-                                {nome}
+                              <div className="text-base font-semibold text-foreground truncate" title={g.nome}>
+                                {g.nome}
                               </div>
                             </div>
                             <div className="text-right tabular-nums whitespace-nowrap text-sm text-foreground/90">
-                              {formatNumber(kg, 2)}
+                              {formatNumber(g.kg, 2)}
                             </div>
                             <div className="text-right tabular-nums whitespace-nowrap text-sm text-foreground/90">
-                              {formatCurrency(precoKg)}
+                              {formatCurrency(precoMedio)}
                             </div>
                             <div className="text-right tabular-nums whitespace-nowrap text-sm font-semibold text-foreground">
-                              {formatCurrency(subtotal)}
+                              {formatCurrency(g.total)}
                             </div>
                           </div>
                         );
-                      })}
+                      });
+                    })()}
                   </div>
                   <div className="px-3 py-3">
                     <div className="w-full text-center md:text-center p-3 sm:p-4 rounded-xl border border-accent/20 bg-accent/10 shadow-sm font-bold text-base md:text-lg text-foreground">

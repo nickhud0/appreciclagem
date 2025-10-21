@@ -109,55 +109,56 @@ const PreviewComanda = () => {
         </div>
       </div>
 
-      {/* Cupom térmico 58mm */}
+      {/* Cupom térmico ampliado e legível (altura conforme conteúdo) */}
       <div className="flex justify-center">
-        <div className="mx-auto w-[230px] bg-white text-black p-3 rounded-lg shadow-sm font-mono leading-tight">
+        <div className="mx-auto w-[90%] max-w-[400px] bg-white text-black p-5 rounded-xl shadow-md font-mono tracking-tight leading-snug">
           {/* Cabeçalho do cupom */}
-          <div className="text-center text-[13px] font-bold">Reciclagem Pereque</div>
-          <div className="text-center">------------------------------</div>
-          <div className="text-center text-[12px]">
-            <div className="font-bold">{header.codigo || '—'}</div>
+          <div className="text-center text-lg font-bold">Reciclagem Pereque</div>
+          <hr className="my-2 border-t border-gray-300" />
+          <div className="text-center text-base">
+            <div className="text-lg font-bold">{header.codigo || '—'}</div>
             <div>{header.comanda_data ? formatDateTime(header.comanda_data) : '—'}</div>
-            <div className="uppercase">{header.comanda_tipo || '—'}</div>
+            <div className="uppercase font-bold">{header.comanda_tipo || '—'}</div>
           </div>
 
-          <div className="text-center">------------------------------</div>
+          <hr className="my-2 border-t border-gray-300" />
 
           {/* Itens */}
           {itens.length === 0 ? (
-            <div className="text-center text-[12px]">Nenhum item</div>
+            <div className="text-center text-sm">Nenhum item</div>
           ) : (
-            <div className="space-y-1">
+            <div className="space-y-2">
               {itens.map((it, idx) => {
                 const nome = it.material_nome || `#${it.material_id ?? ''}`;
                 const kg = `${formatNumber(Number(it.kg_total || 0), 3)} kg`;
                 const preco = formatCurrency(Number(it.preco_kg) || 0);
                 const total = formatCurrency(Number(it.item_valor_total) || 0);
                 return (
-                  <div key={idx} className="text-[12px] whitespace-normal break-words">
-                    {`${nome} ${kg} x ${preco} = ${total}`}
+                  <div key={idx} className="text-base whitespace-normal break-words">
+                    <div className="font-medium">{nome}</div>
+                    <div>{`${kg} x ${preco} = ${total}`}</div>
                   </div>
                 );
               })}
             </div>
           )}
 
-          <div className="text-center mt-2">------------------------------</div>
+          <hr className="my-2 border-t border-gray-300" />
 
           {/* Totais */}
-          <div className="text-center text-[13px] font-bold">
+          <div className="text-center text-xl font-semibold text-primary mt-2">
             TOTAL: {formatCurrency(Number(totalCalculado) || 0)}
           </div>
           {header.observacoes ? (
-            <div className="text-center mt-1 text-[11px] italic whitespace-pre-wrap">
+            <div className="text-center mt-2 text-sm italic whitespace-pre-wrap">
               {header.observacoes}
             </div>
           ) : null}
 
-          <div className="text-center mt-2">------------------------------</div>
+          <hr className="my-2 border-t border-gray-300" />
 
           {/* Rodapé do cupom */}
-          <div className="text-center italic text-gray-500 text-sm">Deus seja louvado.</div>
+          <div className="text-center italic text-gray-500 text-sm mt-4">Deus seja louvado.</div>
         </div>
       </div>
 

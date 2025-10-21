@@ -1,7 +1,7 @@
 import { ArrowLeft, FileText, Plus, Trash2, Edit, Calculator, ShoppingCart, DollarSign } from "lucide-react";
 import { Device } from '@capacitor/device';
 import { useNavigate } from "react-router-dom";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -138,6 +138,28 @@ const ComandaAtual = () => {
     localStorage.removeItem('comandaAtual');
     // success toast removed to keep UI silent
   };
+
+  // Agrupar itens visualmente por material com preço médio ponderado
+  const groupedItens = useMemo(() => {
+    if (!comanda || !Array.isArray(comanda.itens)) return [] as Array<{ material: string; kg_total: number; valor_total: number; preco_medio: number; ids: number[] }>;
+    const map = new Map<string, { kg: number; total: number; ids: number[] }>();
+    for (const it of comanda.itens) {
+      const key = it.material || '—';
+      const prev = map.get(key) || { kg: 0, total: 0, ids: [] as number[] };
+      prev.kg += Number(it.quantidade) || 0;
+      prev.total += Number(it.total) || 0;
+      prev.ids.push(it.id);
+      map.set(key, prev);
+    }
+    const result: Array<{ material: string; kg_total: number; valor_total: number; preco_medio: number; ids: number[] }> = [];
+    for (const [material, v] of map.entries()) {
+      const kg = v.kg;
+      const total = v.total;
+      const precoMedio = kg > 0 ? Number((total / kg).toFixed(2)) : 0;
+      result.push({ material, kg_total: kg, valor_total: total, preco_medio: precoMedio, ids: v.ids });
+    }
+    return result;
+  }, [comanda]);
 
   const handleFinalizarComanda = async () => {
     if (!comanda || comanda.itens.length === 0) return;
@@ -301,52 +323,30 @@ const ComandaAtual = () => {
           </div>
         </Card>
 
-        {/* Lista de Itens - Responsiva */}
+        {/* Lista de Itens Agrupados - Responsiva */}
         <div className="space-y-4 mb-6">
-          {comanda.itens.map((item) => (
-            <Card key={item.id} className="p-4">
+          {groupedItens.map((g) => (
+            <Card key={g.material} className="p-4">
               <div className="space-y-3">
-                {/* Nome do material */}
                 <div className="flex justify-between items-start">
                   <h3 className="font-semibold text-foreground text-base leading-tight flex-1 pr-3">
-                    {item.material}
+                    {g.material}
                   </h3>
-                  <div className="flex gap-2">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => handleEditItem(item)}
-                      className="h-9 w-9 p-0"
-                    >
-                      <Edit className="h-4 w-4" />
-                    </Button>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => handleDeleteItem(item.id)}
-                      className="h-9 w-9 p-0 text-destructive hover:text-destructive"
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
-                  </div>
+                  <div className="text-xs text-muted-foreground whitespace-nowrap">{g.ids.length} item{g.ids.length !== 1 ? 's' : ''}</div>
                 </div>
-                
-                {/* Detalhes do item */}
-                <div className="grid grid-cols-2 gap-4 text-sm">
+                <div className="grid grid-cols-3 gap-3 text-sm">
                   <div className="bg-muted/30 p-2 rounded">
-                    <span className="text-muted-foreground text-xs block">Quantidade:</span>
-                    <span className="font-semibold text-base">{item.quantidade}kg</span>
+                    <span className="text-muted-foreground text-xs block">Kg total</span>
+                    <span className="font-semibold text-base">{g.kg_total}kg</span>
                   </div>
                   <div className="bg-muted/30 p-2 rounded">
-                    <span className="text-muted-foreground text-xs block">Preço/kg:</span>
-                    <span className="font-semibold text-base">{formatCurrency(item.preco)}</span>
+                    <span className="text-muted-foreground text-xs block">Preço/kg médio</span>
+                    <span className="font-semibold text-base">{formatCurrency(g.preco_medio)}</span>
                   </div>
-                </div>
-                
-                {/* Total do item */}
-                <div className="flex justify-between items-center pt-2 border-t bg-primary/5 p-3 rounded">
-                  <span className="text-sm text-muted-foreground font-medium">Total do Item:</span>
-                  <span className="font-bold text-lg text-primary">{formatCurrency(item.total)}</span>
+                  <div className="bg-muted/30 p-2 rounded">
+                    <span className="text-muted-foreground text-xs block">Total</span>
+                    <span className="font-bold text-base text-primary">{formatCurrency(g.valor_total)}</span>
+                  </div>
                 </div>
               </div>
             </Card>
