@@ -1,4 +1,4 @@
-import { ArrowLeft, Package, Search } from "lucide-react";
+import { ArrowLeft, Package, Search, CloudOff } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -68,11 +68,11 @@ const Estoque = () => {
     return estoque.filter((e) => (e.material || '').toLowerCase().includes(q));
   }, [estoque, busca]);
 
-  const StatBlock = ({ title, value = "—", valueClassName }: { title: string; value?: string | number; valueClassName?: string }) => {
+  const StatBlock = ({ title, value = "—", valueClassName, titleClassName, cardClassName }: { title: string; value?: string | number; valueClassName?: string; titleClassName?: string; cardClassName?: string }) => {
     return (
-      <Card className="p-3 shadow-card">
-        <div className="text-xs text-muted-foreground">{title}</div>
-        <div className={`mt-1 text-xl font-bold ${valueClassName || ''}`}>{value}</div>
+      <Card className={`bg-card rounded-2xl p-3 shadow-sm border border-border/10 flex flex-col items-center justify-center text-center ${cardClassName || ''}`}>
+        <div className={`text-sm font-medium text-muted-foreground uppercase tracking-wide ${titleClassName || ''}`}>{title}</div>
+        <div className={`mt-1 text-xl font-bold text-foreground ${valueClassName || ''}`}>{value}</div>
       </Card>
     );
   };
@@ -107,19 +107,27 @@ const Estoque = () => {
           />
         </div>
 
-        {/* Indicadores (visual somente) */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-2">
+        {/* Título Resumo */}
+        <h2 className="text-lg font-bold text-foreground px-3 mt-3 mb-1">Resumo Financeiro</h2>
+        {/* Indicadores */}
+        <div className="grid grid-cols-2 gap-2 sm:gap-3 mb-3">
           <StatBlock
             title="KG"
             value={resumo?.total_kg != null ? formatWeight(Number(resumo.total_kg) || 0) : '—'}
+            titleClassName="text-blue-300"
+            cardClassName="bg-blue-500/10"
           />
           <StatBlock
             title="Custo"
             value={resumo?.total_custo != null ? formatCurrency(Number(resumo.total_custo) || 0) : '—'}
+            titleClassName="text-red-300"
+            cardClassName="bg-red-500/10"
           />
           <StatBlock
             title="Potencial"
             value={resumo?.total_venda_potencial != null ? formatCurrency(Number(resumo.total_venda_potencial) || 0) : '—'}
+            titleClassName="text-emerald-300"
+            cardClassName="bg-emerald-500/10"
           />
           <StatBlock
             title="Lucro"
@@ -128,18 +136,39 @@ const Estoque = () => {
               resumo?.lucro_potencial == null
                 ? 'text-muted-foreground'
                 : Number(resumo.lucro_potencial) > 0
-                  ? 'text-success'
+                  ? 'text-emerald-500'
                   : Number(resumo.lucro_potencial) < 0
-                    ? 'text-destructive'
+                    ? 'text-red-500'
                     : 'text-muted-foreground'
+            }
+            titleClassName={
+              resumo?.lucro_potencial == null
+                ? ''
+                : Number(resumo.lucro_potencial) > 0
+                  ? 'text-emerald-300'
+                  : Number(resumo.lucro_potencial) < 0
+                    ? 'text-red-300'
+                    : ''
+            }
+            cardClassName={
+              resumo?.lucro_potencial == null
+                ? 'bg-card'
+                : Number(resumo.lucro_potencial) > 0
+                  ? 'bg-emerald-500/10'
+                  : Number(resumo.lucro_potencial) < 0
+                    ? 'bg-red-500/10'
+                    : 'bg-card'
             }
           />
         </div>
         {resumo?.updated_at ? (
-          <div className="text-xs text-muted-foreground mb-6">Atualizado em: {formatDateTime(resumo.updated_at)}</div>
+          <div className="text-xs text-muted-foreground px-3 mt-2 mb-3">Atualizado em: {formatDateTime(resumo.updated_at)}</div>
         ) : (
-          <div className="mb-6" />
+          <div className="mb-3" />
         )}
+
+        {/* Título Materiais */}
+        <h2 className="text-lg font-bold text-foreground px-3 mt-2 mb-2">Materiais em Estoque</h2>
 
         {loading ? (
           <div className="text-center text-muted-foreground">Carregando...</div>
@@ -149,17 +178,24 @@ const Estoque = () => {
             <p className="text-muted-foreground">Tente ajustar a busca.</p>
           </Card>
         ) : (
-          <div className="space-y-3">
+          <div className="space-y-2">
+            {/* Header row */}
+            <div className="px-1 py-1 text-xs text-muted-foreground flex items-center">
+              <div className="flex-1">Nome</div>
+              <div className="w-[120px] text-right pr-4">Médio/kg</div>
+              <div className="w-[120px] text-right">Total</div>
+            </div>
             {filtrado.map((item) => (
-              <Card key={item.material} className="p-4">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <div className="font-semibold text-foreground">{item.material}</div>
-                    <div className="text-xs text-muted-foreground">Valor médio/kg: {formatCurrency(item.valor_medio_kg || 0)}</div>
+              <Card key={item.material} className="bg-card/60 border border-border/20 rounded-2xl p-3 shadow-sm backdrop-blur-md">
+                <div className="flex items-center min-w-0">
+                  <div className="flex-1 min-w-0">
+                    <div className="truncate text-base font-semibold text-foreground">{item.material}</div>
                   </div>
-                  <div className="text-right">
-                    <div className="text-sm">Kg total: <span className="font-semibold">{item.kg_total ?? 0}</span></div>
-                    <div className="text-sm">Total gasto: <span className="font-semibold">{formatCurrency(item.valor_total_gasto || 0)}</span></div>
+                  <div className="w-[120px] text-right text-sm text-muted-foreground whitespace-nowrap pr-4">
+                    <span className="font-medium text-primary">{formatCurrency(item.valor_medio_kg || 0)}</span>
+                  </div>
+                  <div className="w-[120px] text-right text-sm text-muted-foreground whitespace-nowrap">
+                    <span className="font-medium text-primary">{formatCurrency(item.valor_total_gasto || 0)}</span>
                   </div>
                 </div>
               </Card>
