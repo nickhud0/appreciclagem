@@ -133,50 +133,68 @@ const PreviewComanda = () => {
         </div>
       </div>
 
-      {/* Cupom térmico ampliado e legível (altura conforme conteúdo) */}
+      {/* Cupom térmico 58mm fiel (largura fixa ~240px) */}
       <div className="flex justify-center">
-        <div className="mx-auto w-[90%] max-w-[400px] bg-white text-black p-5 rounded-xl shadow-md font-mono tracking-tight leading-snug">
+        <div className="mx-auto w-[240px] bg-white text-gray-900 p-2 rounded-lg shadow-sm border border-dashed border-gray-300 font-mono tracking-tight leading-tight">
           {/* Cabeçalho do cupom */}
-          <div className="text-center text-lg font-bold">Reciclagem Pereque</div>
-          <hr className="my-2 border-t border-gray-300" />
-          <div className="text-center text-base">
-            <div className="text-lg font-bold">{header.codigo || '—'}</div>
+          <div className="text-center text-[15px] font-bold">Reciclagem Perequê</div>
+          <div className="text-center text-[11px] leading-tight my-1">
+            <div>Ubatuba, Perequê Mirim</div>
+            <div>Av. Marginal, 2504</div>
+            <div>12 99162-0321</div>
+            <div>CNPJ/PIX 45.492.161/0001-88</div>
+          </div>
+          <div className="border-b border-gray-400 my-2" />
+          <div className="text-center text-[12px]">
+            <div className="font-bold">{header.codigo || '—'}</div>
             <div>{header.comanda_data ? formatDateTime(header.comanda_data) : '—'}</div>
             <div className="uppercase font-bold">{header.comanda_tipo || '—'}</div>
           </div>
 
-          <hr className="my-2 border-t border-gray-300" />
+          <div className="border-b border-gray-400 my-2" />
 
           {/* Itens */}
           {groupedItens.length === 0 ? (
-            <div className="text-center text-sm">Nenhum item</div>
+            <div className="text-center text-[12px]">Nenhum item</div>
           ) : (
-            <div className="space-y-2">
+            <div>
+              {/* Cabeçalho de colunas */}
+              <div className="grid grid-cols-[2fr_1fr_1fr_1fr] gap-1 text-[11px] font-semibold text-gray-700">
+                <div>Material</div>
+                <div className="text-right">Kg</div>
+                <div className="text-right">Preço</div>
+                <div className="text-right">Total</div>
+              </div>
+              <div className="border-b border-gray-300 my-1" />
+              {/* Linhas de itens (uma linha por material) */}
               {groupedItens.map((g, idx) => (
-                <div key={idx} className="text-base whitespace-normal break-words">
-                  <div className="font-medium">{g.nome}</div>
-                  <div>{`${formatNumber(g.kg, 3)} kg x ${formatCurrency(g.precoMedio)} = ${formatCurrency(g.total)}`}</div>
+                <div key={idx} className="grid grid-cols-[2fr_1fr_1fr_1fr] gap-1 items-center text-[13px] py-0.5">
+                  <div className="truncate pr-1">{g.nome}</div>
+                  <div className="text-right tabular-nums">{formatNumber(g.kg, 2)}</div>
+                  <div className="text-right tabular-nums font-semibold">{formatCurrency(g.precoMedio)}</div>
+                  <div className="text-right tabular-nums font-semibold">{formatCurrency(g.total)}</div>
+                  <div className="col-span-4 border-b border-dotted border-gray-300 my-1" />
                 </div>
               ))}
             </div>
           )}
 
-          <hr className="my-2 border-t border-gray-300" />
+          <div className="border-t border-gray-400 my-2" />
 
           {/* Totais */}
-          <div className="text-center text-xl font-semibold text-primary mt-2">
+          <div className="text-center text-lg font-bold text-black">
             TOTAL: {formatCurrency(Number(totalCalculado) || 0)}
           </div>
           {header.observacoes ? (
-            <div className="text-center mt-2 text-sm italic whitespace-pre-wrap">
+            <div className="text-center mt-1 text-xs text-gray-600 italic whitespace-pre-wrap">
               {header.observacoes}
             </div>
           ) : null}
 
-          <hr className="my-2 border-t border-gray-300" />
+          <div className="border-t border-gray-400 my-2" />
 
           {/* Rodapé do cupom */}
-          <div className="text-center italic text-gray-500 text-sm mt-4">Deus seja louvado.</div>
+          <div className="text-sm font-semibold text-center mt-4 pb-6">Deus seja louvado</div>
         </div>
       </div>
 
@@ -184,14 +202,14 @@ const PreviewComanda = () => {
       <div className="mt-4">
         <Card className="rounded-xl border border-border/20 shadow-md p-4">
           <div className="grid grid-cols-3 gap-3">
-            <Button variant="outline" className="w-full">
-              <MessageCircle className="h-4 w-4 mr-2 text-emerald-500" /> WhatsApp
+            <Button className="w-full rounded-xl shadow-sm transition-colors bg-primary text-primary-foreground py-2 px-4">
+              <MessageCircle className="h-4 w-4 mr-2" /> WhatsApp
             </Button>
-            <Button variant="outline" className="w-full">
-              <FileText className="h-4 w-4 mr-2 text-blue-500" /> PDF
+            <Button className="w-full rounded-xl shadow-sm transition-colors bg-primary text-primary-foreground py-2 px-4">
+              <FileText className="h-4 w-4 mr-2" /> PDF
             </Button>
-            <Button variant="outline" className="w-full">
-              <Printer className="h-4 w-4 mr-2 text-foreground" /> Imprimir
+            <Button className="w-full rounded-xl shadow-sm transition-colors bg-primary text-primary-foreground py-2 px-4">
+              <Printer className="h-4 w-4 mr-2" /> Imprimir
             </Button>
           </div>
         </Card>
