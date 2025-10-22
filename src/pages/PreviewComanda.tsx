@@ -1,5 +1,5 @@
 import { ArrowLeft, Printer, MessageCircle, FileText } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -29,6 +29,10 @@ const PreviewComanda = () => {
   const [header, setHeader] = useState<ComandaHeader | null>(null);
   const [itens, setItens] = useState<ComandaItem[]>([]);
   const [loading, setLoading] = useState(true);
+  const [scale, setScale] = useState(1);
+  const receiptRef = useRef<HTMLDivElement | null>(null);
+  const headerRef = useRef<HTMLDivElement | null>(null);
+  const actionsRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     async function loadLatestComanda() {
@@ -94,6 +98,42 @@ const PreviewComanda = () => {
     }));
   }, [itens]);
 
+  // Escala automática para preencher a tela sem rolagem lateral
+  const computeScale = useCallback(() => {
+    try {
+      const vw = Math.max(document.documentElement.clientWidth || 0, window.innerWidth || 0);
+      const vh = Math.max(document.documentElement.clientHeight || 0, window.innerHeight || 0);
+      const availableW = Math.max(0, vw - 32); // margens laterais
+      const paperBase = 240; // largura base do papel (px)
+      const sW = availableW / paperBase;
+
+      // Ajuste por altura para evitar rolagem desnecessária
+      const headerH = headerRef.current ? headerRef.current.offsetHeight : 0;
+      const actionsH = actionsRef.current ? actionsRef.current.offsetHeight : 0;
+      const contentH = receiptRef.current ? receiptRef.current.offsetHeight : 0;
+      const verticalGaps = 24; // respiro adicional mais preciso
+      const availableH = Math.max(0, vh - headerH - actionsH - verticalGaps);
+      const sH = contentH > 0 ? (availableH / contentH) : sW;
+
+      // Use o menor fator entre largura/altura e aplique fator de segurança (2%) para evitar corte
+      let s = Math.min(sW, sH) * 0.98;
+      s = Math.min(2.0, Math.max(1.0, s));
+      setScale(Number((isFinite(s) ? s : 1.0).toFixed(2)));
+    } catch {}
+  }, []);
+
+  useEffect(() => {
+    computeScale();
+    window.addEventListener('resize', computeScale);
+    return () => window.removeEventListener('resize', computeScale);
+  }, [computeScale]);
+
+  // Recalcular após carregamento/alteração dos itens para eliminar rolagem quando há espaço
+  useEffect(() => {
+    const id = window.requestAnimationFrame(() => computeScale());
+    return () => window.cancelAnimationFrame(id);
+  }, [computeScale, loading, itens.length]);
+
   if (loading) {
     return (
       <div className="min-h-screen bg-background p-4">
@@ -122,9 +162,9 @@ const PreviewComanda = () => {
   }
 
   return (
-    <div className="min-h-screen bg-background p-4">
+    <div className="min-h-screen bg-background p-4 sm:p-6 flex flex-col items-center justify-start">
       {/* Header */}
-      <div className="flex items-center justify-between mb-4">
+      <div ref={headerRef} className="flex items-center justify-between mb-4">
         <div className="flex items-center">
           <Button variant="ghost" size="sm" className="mr-3" onClick={() => navigate(-1)}>
             <ArrowLeft className="h-4 w-4" />
@@ -133,12 +173,13 @@ const PreviewComanda = () => {
         </div>
       </div>
 
-      {/* Cupom térmico 58mm fiel (largura fixa ~240px) */}
-      <div className="flex justify-center">
-        <div className="mx-auto w-[240px] bg-white text-gray-900 p-2 rounded-lg shadow-sm border border-dashed border-gray-300 font-mono tracking-tight leading-tight">
+      {/* Cupom térmico 58mm fiel (largura fixa ~240px) com escala automática */}
+      <div className="w-full flex justify-center items-start px-4">
+        <div className="origin-top" style={{ transform: `scale(${scale})`, transformOrigin: 'top center', willChange: 'transform' }}>
+          <div ref={receiptRef} className="mx-auto w-[240px] max-w-[260px] bg-white text-gray-900 p-3 rounded-lg shadow-md border border-dashed border-gray-300 font-mono tracking-tight leading-tight mt-4 mb-8">
           {/* Cabeçalho do cupom */}
           <div className="text-center text-[15px] font-bold">Reciclagem Perequê</div>
-          <div className="text-center text-[11px] leading-tight my-1">
+          <div className="text-center text-[12px] leading-tight my-1">
             <div>Ubatuba, Perequê Mirim</div>
             <div>Av. Marginal, 2504</div>
             <div>12 99162-0321</div>
@@ -146,30 +187,30 @@ const PreviewComanda = () => {
           </div>
           <div className="border-b border-gray-400 my-2" />
           <div className="text-center text-[12px]">
-            <div className="font-bold">{header.codigo || '—'}</div>
-            <div>{header.comanda_data ? formatDateTime(header.comanda_data) : '—'}</div>
-            <div className="uppercase font-bold">{header.comanda_tipo || '—'}</div>
+            <div className="font-bold text-[14px]">{header.codigo || '—'}</div>
+            <div className="text-[12px]">{header.comanda_data ? formatDateTime(header.comanda_data) : '—'}</div>
+            <div className="uppercase font-bold text-[12px]">{header.comanda_tipo || '—'}</div>
           </div>
 
           <div className="border-b border-gray-400 my-2" />
 
           {/* Itens */}
           {groupedItens.length === 0 ? (
-            <div className="text-center text-[12px]">Nenhum item</div>
+            <div className="text-center text-[13px]">Nenhum item</div>
           ) : (
             <div>
               {/* Cabeçalho de colunas */}
-              <div className="grid grid-cols-[2fr_1fr_1fr_1fr] gap-1 text-[11px] font-semibold text-gray-700">
+              <div className="grid grid-cols-[2.8fr_1fr_1fr_1.2fr] gap-2 text-[12px] font-semibold text-gray-700">
                 <div>Material</div>
                 <div className="text-right">Kg</div>
                 <div className="text-right">Preço</div>
                 <div className="text-right">Total</div>
               </div>
-              <div className="border-b border-gray-300 my-1" />
+              <div className="border-b border-dotted border-gray-300 my-1" />
               {/* Linhas de itens (uma linha por material) */}
               {groupedItens.map((g, idx) => (
-                <div key={idx} className="grid grid-cols-[2fr_1fr_1fr_1fr] gap-1 items-center text-[13px] py-0.5">
-                  <div className="truncate pr-1">{g.nome}</div>
+                <div key={idx} className="grid grid-cols-[2.8fr_1fr_1fr_1.2fr] gap-2 items-center text-[15px] py-2">
+                  <div className="pr-1 break-words whitespace-normal leading-normal">{g.nome}</div>
                   <div className="text-right tabular-nums">{formatNumber(g.kg, 2)}</div>
                   <div className="text-right tabular-nums font-semibold">{formatCurrency(g.precoMedio)}</div>
                   <div className="text-right tabular-nums font-semibold">{formatCurrency(g.total)}</div>
@@ -195,24 +236,23 @@ const PreviewComanda = () => {
 
           {/* Rodapé do cupom */}
           <div className="text-sm font-semibold text-center mt-4 pb-6">Deus seja louvado</div>
+          </div>
         </div>
       </div>
 
       {/* Ações abaixo do cupom */}
-      <div className="mt-4">
-        <Card className="rounded-xl border border-border/20 shadow-md p-4">
-          <div className="grid grid-cols-3 gap-3">
-            <Button className="w-full rounded-xl shadow-sm transition-colors bg-primary text-primary-foreground py-2 px-4">
-              <MessageCircle className="h-4 w-4 mr-2" /> WhatsApp
-            </Button>
-            <Button className="w-full rounded-xl shadow-sm transition-colors bg-primary text-primary-foreground py-2 px-4">
-              <FileText className="h-4 w-4 mr-2" /> PDF
-            </Button>
-            <Button className="w-full rounded-xl shadow-sm transition-colors bg-primary text-primary-foreground py-2 px-4">
-              <Printer className="h-4 w-4 mr-2" /> Imprimir
-            </Button>
-          </div>
-        </Card>
+      <div ref={actionsRef} className="mt-6 w-full flex justify-center">
+        <div className="flex flex-wrap justify-center gap-3">
+          <Button className="rounded-xl shadow-sm transition-colors bg-primary text-primary-foreground py-2 px-4">
+            <MessageCircle className="h-4 w-4 mr-2" /> WhatsApp
+          </Button>
+          <Button className="rounded-xl shadow-sm transition-colors bg-primary text-primary-foreground py-2 px-4">
+            <FileText className="h-4 w-4 mr-2" /> PDF
+          </Button>
+          <Button className="rounded-xl shadow-sm transition-colors bg-primary text-primary-foreground py-2 px-4">
+            <Printer className="h-4 w-4 mr-2" /> Imprimir
+          </Button>
+        </div>
       </div>
     </div>
   );
