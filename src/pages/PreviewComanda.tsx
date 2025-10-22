@@ -1,4 +1,4 @@
-import { ArrowLeft, Printer, MessageCircle, FileText } from "lucide-react";
+import { ArrowLeft } from "lucide-react";
 import { useEffect, useMemo, useRef, useState, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { Card } from "@/components/ui/card";
@@ -162,7 +162,7 @@ const PreviewComanda = () => {
   }
 
   return (
-    <div className="min-h-screen bg-background p-4 sm:p-6 flex flex-col items-center justify-start">
+    <div className="flex flex-col items-center justify-start w-full min-h-screen bg-background overflow-y-auto pb-20">
       {/* Header */}
       <div ref={headerRef} className="flex items-center justify-between mb-4">
         <div className="flex items-center">
@@ -174,22 +174,23 @@ const PreviewComanda = () => {
       </div>
 
       {/* Cupom térmico 58mm fiel (largura fixa ~240px) com escala automática */}
-      <div className="w-full flex justify-center items-start px-4">
-        <div className="origin-top" style={{ transform: `scale(${scale})`, transformOrigin: 'top center', willChange: 'transform' }}>
-          <div ref={receiptRef} className="mx-auto w-[240px] max-w-[260px] bg-white text-gray-900 p-3 rounded-lg shadow-md border border-dashed border-gray-300 font-mono tracking-tight leading-tight mt-4 mb-8">
+      <div id="comanda-preview" className="w-full flex justify-center items-start px-4">
+        <div className="w-[90%] max-w-sm bg-white text-black rounded-lg shadow-md overflow-y-auto max-h-[80vh] p-4">
+          <div className="origin-top" style={{ transform: `scale(${scale})`, transformOrigin: 'top center', willChange: 'transform' }}>
+            <div ref={receiptRef} className="w-full max-w-[260px] md:max-w-[320px] mx-auto px-3 sm:px-4 overflow-hidden break-words bg-white text-gray-900 p-3 rounded-lg shadow-md border border-dashed border-gray-300 font-mono tracking-tight leading-tight mt-4 mb-8">
           {/* Cabeçalho do cupom */}
-          <div className="text-center text-[15px] font-bold">Reciclagem Perequê</div>
-          <div className="text-center text-[12px] leading-tight my-1">
+          <div className="text-center text-lg font-bold">Reciclagem Perequê</div>
+          <div className="text-center text-xs leading-tight my-1">
             <div>Ubatuba, Perequê Mirim</div>
             <div>Av. Marginal, 2504</div>
             <div>12 99162-0321</div>
             <div>CNPJ/PIX 45.492.161/0001-88</div>
           </div>
           <div className="border-b border-gray-400 my-2" />
-          <div className="text-center text-[12px]">
-            <div className="font-bold text-[14px]">{header.codigo || '—'}</div>
-            <div className="text-[12px]">{header.comanda_data ? formatDateTime(header.comanda_data) : '—'}</div>
-            <div className="uppercase font-bold text-[12px]">{header.comanda_tipo || '—'}</div>
+          <div className="text-center text-sm">
+            <div className="font-bold text-base">{header.codigo || '—'}</div>
+            <div className="text-sm">{header.comanda_data ? formatDateTime(header.comanda_data) : '—'}</div>
+            <div className="uppercase font-bold text-sm">{header.comanda_tipo || '—'}</div>
           </div>
 
           <div className="border-b border-gray-400 my-2" />
@@ -200,7 +201,7 @@ const PreviewComanda = () => {
           ) : (
             <div>
               {/* Cabeçalho de colunas */}
-              <div className="grid grid-cols-[2.8fr_1fr_1fr_1.2fr] gap-2 text-[12px] font-semibold text-gray-700">
+              <div className="grid grid-cols-[2.8fr_1fr_1fr_1.2fr] gap-2 text-xs md:text-sm font-semibold text-gray-700">
                 <div>Material</div>
                 <div className="text-right">Kg</div>
                 <div className="text-right">Preço</div>
@@ -209,7 +210,7 @@ const PreviewComanda = () => {
               <div className="border-b border-dotted border-gray-300 my-1" />
               {/* Linhas de itens (uma linha por material) */}
               {groupedItens.map((g, idx) => (
-                <div key={idx} className="grid grid-cols-[2.8fr_1fr_1fr_1.2fr] gap-2 items-center text-[15px] py-2">
+                <div key={idx} className="grid grid-cols-[2.8fr_1fr_1fr_1.2fr] gap-2 items-center text-sm md:text-base py-2">
                   <div className="pr-1 break-words whitespace-normal leading-normal">{g.nome}</div>
                   <div className="text-right tabular-nums">{formatNumber(g.kg, 2)}</div>
                   <div className="text-right tabular-nums font-semibold">{formatCurrency(g.precoMedio)}</div>
@@ -223,11 +224,11 @@ const PreviewComanda = () => {
           <div className="border-t border-gray-400 my-2" />
 
           {/* Totais */}
-          <div className="text-center text-lg font-bold text-black">
+          <div className="text-center text-base md:text-lg font-semibold text-black">
             TOTAL: {formatCurrency(Number(totalCalculado) || 0)}
           </div>
           {header.observacoes ? (
-            <div className="text-center mt-1 text-xs text-gray-600 italic whitespace-pre-wrap">
+            <div className="text-center mt-1 text-xs md:text-sm text-gray-600 italic whitespace-pre-wrap">
               {header.observacoes}
             </div>
           ) : null}
@@ -235,25 +236,27 @@ const PreviewComanda = () => {
           <div className="border-t border-gray-400 my-2" />
 
           {/* Rodapé do cupom */}
-          <div className="text-sm font-semibold text-center mt-4 pb-6">Deus seja louvado</div>
+          <div className="text-base font-semibold text-center mt-4 pb-6">Deus seja louvado</div>
+            </div>
           </div>
         </div>
       </div>
 
-      {/* Ações abaixo do cupom */}
-      <div ref={actionsRef} className="mt-6 w-full flex justify-center">
-        <div className="flex flex-wrap justify-center gap-3">
-          <Button className="rounded-xl shadow-sm transition-colors bg-primary text-primary-foreground py-2 px-4">
-            <MessageCircle className="h-4 w-4 mr-2" /> WhatsApp
-          </Button>
-          <Button className="rounded-xl shadow-sm transition-colors bg-primary text-primary-foreground py-2 px-4">
-            <FileText className="h-4 w-4 mr-2" /> PDF
-          </Button>
-          <Button className="rounded-xl shadow-sm transition-colors bg-primary text-primary-foreground py-2 px-4">
-            <Printer className="h-4 w-4 mr-2" /> Imprimir
-          </Button>
+      {/* === BOTÕES FLUTUANTES FIXOS === */}
+      <div className="fixed bottom-4 left-0 w-full flex justify-center z-50">
+        <div ref={actionsRef} className="flex justify-center gap-3 w-[95%] max-w-sm bg-background/90 backdrop-blur-md p-3 rounded-2xl shadow-lg border border-border/30">
+          <button className="flex-1 py-3 rounded-lg bg-green-600 text-white font-semibold text-base shadow-sm active:scale-95">
+            WhatsApp
+          </button>
+          <button className="flex-1 py-3 rounded-lg bg-blue-600 text-white font-semibold text-base shadow-sm active:scale-95">
+            PDF
+          </button>
+          <button className="flex-1 py-3 rounded-lg bg-gray-700 text-white font-semibold text-base shadow-sm active:scale-95">
+            Imprimir
+          </button>
         </div>
       </div>
+      {console.log("✅ Botões renderizados na tela de Imprimir Última Comanda")}
     </div>
   );
 };
