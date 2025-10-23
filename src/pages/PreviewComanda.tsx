@@ -176,6 +176,8 @@ const PreviewComanda = () => {
             maxHeight: '82vh',
             transform: `scale(${scale})`,
             transformOrigin: 'top center',
+            paddingLeft: '10px',
+            paddingRight: '10px',
           }}
         >
           <div ref={receiptRef} className="w-auto mx-auto px-3 sm:px-4 overflow-hidden break-words bg-white text-gray-900 p-3 rounded-lg shadow-md border border-dashed border-gray-300 font-mono tracking-tight leading-tight">
@@ -202,7 +204,7 @@ const PreviewComanda = () => {
           ) : (
             <div>
               {/* Cabeçalho de colunas */}
-              <div className="grid grid-cols-[45%_15%_20%_20%] gap-1 text-xs md:text-sm font-semibold text-gray-700">
+              <div className="grid grid-cols-[40%_15%_22%_23%] gap-0.5 text-xs md:text-sm font-semibold text-gray-700">
                 <div>Material</div>
                 <div className="text-right whitespace-nowrap">Kg</div>
                 <div className="text-right whitespace-nowrap">Preço</div>
@@ -211,8 +213,8 @@ const PreviewComanda = () => {
               <div className="border-b border-dotted border-gray-300 my-1" />
               {/* Linhas de itens (uma linha por material) */}
               {groupedItens.map((g, idx) => (
-                <div key={idx} className="grid grid-cols-[45%_15%_20%_20%] gap-1 items-center text-sm md:text-base py-2">
-                  <div className="pr-1 break-words whitespace-normal leading-normal">{g.nome}</div>
+                <div key={idx} className="grid grid-cols-[40%_15%_22%_23%] gap-0.5 items-center text-sm md:text-base py-2">
+                  <div className="pr-0.5 break-words whitespace-normal leading-normal">{g.nome}</div>
                   <div className="text-right tabular-nums whitespace-nowrap">{formatNumber(g.kg, 2)}</div>
                   <div className="text-right tabular-nums font-semibold whitespace-nowrap">{formatCurrency(g.precoMedio)}</div>
                   <div className="text-right tabular-nums font-semibold whitespace-nowrap">{formatCurrency(g.total)}</div>
