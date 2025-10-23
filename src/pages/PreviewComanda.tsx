@@ -98,26 +98,14 @@ const PreviewComanda = () => {
     }));
   }, [itens]);
 
-  // Escala automática para preencher a tela sem rolagem lateral
+  // Escala automática baseada na largura da tela (sem rolagem horizontal)
   const computeScale = useCallback(() => {
     try {
       const vw = Math.max(document.documentElement.clientWidth || 0, window.innerWidth || 0);
-      const vh = Math.max(document.documentElement.clientHeight || 0, window.innerHeight || 0);
-      const availableW = Math.max(0, vw - 32); // margens laterais
-      const paperBase = 240; // largura base do papel (px)
-      const sW = availableW / paperBase;
-
-      // Ajuste por altura para evitar rolagem desnecessária
-      const headerH = headerRef.current ? headerRef.current.offsetHeight : 0;
-      const actionsH = actionsRef.current ? actionsRef.current.offsetHeight : 0;
-      const contentH = receiptRef.current ? receiptRef.current.offsetHeight : 0;
-      const verticalGaps = 24; // respiro adicional mais preciso
-      const availableH = Math.max(0, vh - headerH - actionsH - verticalGaps);
-      const sH = contentH > 0 ? (availableH / contentH) : sW;
-
-      // Use o menor fator entre largura/altura e aplique fator de segurança (2%) para evitar corte
-      let s = Math.min(sW, sH) * 0.98;
-      s = Math.min(2.0, Math.max(1.0, s));
+      const horizontalPadding = 24; // aproximadamente px-4
+      const baseWidth = 340; // largura fixa da comanda
+      const sW = Math.max(0, (vw - horizontalPadding)) / baseWidth;
+      let s = Math.min(1.35, Math.max(1.0, sW));
       setScale(Number((isFinite(s) ? s : 1.0).toFixed(2)));
     } catch {}
   }, []);
@@ -162,7 +150,7 @@ const PreviewComanda = () => {
   }
 
   return (
-    <div className="flex flex-col items-center justify-start w-full min-h-screen bg-background overflow-y-auto pb-20">
+    <div className="flex flex-col items-center justify-start w-full min-h-screen bg-background overflow-x-hidden overflow-y-auto pb-28">
       {/* Header */}
       <div ref={headerRef} className="flex items-center justify-between mb-4">
         <div className="flex items-center">
@@ -174,10 +162,23 @@ const PreviewComanda = () => {
       </div>
 
       {/* Cupom térmico 58mm fiel (largura fixa ~240px) com escala automática */}
-      <div id="comanda-preview" className="w-full flex justify-center items-start px-4">
-        <div className="w-[90%] max-w-sm bg-white text-black rounded-lg shadow-md overflow-y-auto max-h-[80vh] p-4">
-          <div className="origin-top" style={{ transform: `scale(${scale})`, transformOrigin: 'top center', willChange: 'transform' }}>
-            <div ref={receiptRef} className="w-full max-w-[260px] md:max-w-[320px] mx-auto px-3 sm:px-4 overflow-hidden break-words bg-white text-gray-900 p-3 rounded-lg shadow-md border border-dashed border-gray-300 font-mono tracking-tight leading-tight mt-4 mb-8">
+      <div className="w-full flex justify-center items-start px-4 overflow-x-hidden">
+        <div
+          id="comanda-preview"
+          className="bg-white text-black rounded-lg shadow-md mt-4 mb-8"
+          style={{
+            width: '340px',
+            fontFamily: '\u0027Roboto Mono\u0027, monospace',
+            fontSize: '16px',
+            lineHeight: '1.4',
+            overflowY: 'auto',
+            overflowX: 'hidden',
+            maxHeight: '82vh',
+            transform: `scale(${scale})`,
+            transformOrigin: 'top center',
+          }}
+        >
+          <div ref={receiptRef} className="w-auto mx-auto px-3 sm:px-4 overflow-hidden break-words bg-white text-gray-900 p-3 rounded-lg shadow-md border border-dashed border-gray-300 font-mono tracking-tight leading-tight">
           {/* Cabeçalho do cupom */}
           <div className="text-center text-lg font-bold">Reciclagem Perequê</div>
           <div className="text-center text-xs leading-tight my-1">
@@ -237,7 +238,6 @@ const PreviewComanda = () => {
 
           {/* Rodapé do cupom */}
           <div className="text-base font-semibold text-center mt-4 pb-6">Deus seja louvado</div>
-            </div>
           </div>
         </div>
       </div>

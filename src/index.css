@@ -134,3 +134,9 @@ Todas as cores em HSL para consistência
     @apply bg-background text-foreground;
   }
 }
+
+/* Evitar quebra/overflow horizontal dentro da comanda */
+#comanda-preview * {
+  white-space: normal;
+  word-break: break-word;
+}
