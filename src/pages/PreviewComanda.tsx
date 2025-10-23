@@ -202,20 +202,20 @@ const PreviewComanda = () => {
           ) : (
             <div>
               {/* Cabeçalho de colunas */}
-              <div className="grid grid-cols-[2.8fr_1fr_1fr_1.2fr] gap-2 text-xs md:text-sm font-semibold text-gray-700">
+              <div className="grid grid-cols-[45%_15%_20%_20%] gap-1 text-xs md:text-sm font-semibold text-gray-700">
                 <div>Material</div>
-                <div className="text-right">Kg</div>
-                <div className="text-right">Preço</div>
-                <div className="text-right">Total</div>
+                <div className="text-right whitespace-nowrap">Kg</div>
+                <div className="text-right whitespace-nowrap">Preço</div>
+                <div className="text-right whitespace-nowrap">Total</div>
               </div>
               <div className="border-b border-dotted border-gray-300 my-1" />
               {/* Linhas de itens (uma linha por material) */}
               {groupedItens.map((g, idx) => (
-                <div key={idx} className="grid grid-cols-[2.8fr_1fr_1fr_1.2fr] gap-2 items-center text-sm md:text-base py-2">
+                <div key={idx} className="grid grid-cols-[45%_15%_20%_20%] gap-1 items-center text-sm md:text-base py-2">
                   <div className="pr-1 break-words whitespace-normal leading-normal">{g.nome}</div>
-                  <div className="text-right tabular-nums">{formatNumber(g.kg, 2)}</div>
-                  <div className="text-right tabular-nums font-semibold">{formatCurrency(g.precoMedio)}</div>
-                  <div className="text-right tabular-nums font-semibold">{formatCurrency(g.total)}</div>
+                  <div className="text-right tabular-nums whitespace-nowrap">{formatNumber(g.kg, 2)}</div>
+                  <div className="text-right tabular-nums font-semibold whitespace-nowrap">{formatCurrency(g.precoMedio)}</div>
+                  <div className="text-right tabular-nums font-semibold whitespace-nowrap">{formatCurrency(g.total)}</div>
                   <div className="col-span-4 border-b border-dotted border-gray-300 my-1" />
                 </div>
               ))}

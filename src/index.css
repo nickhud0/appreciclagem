@@ -135,8 +135,8 @@ Todas as cores em HSL para consistência
   }
 }
 
-/* Evitar quebra/overflow horizontal dentro da comanda */
+/* Evitar overflow horizontal dentro da comanda sem afetar utilitários de whitespace */
 #comanda-preview * {
-  white-space: normal;
   word-break: break-word;
+  overflow-wrap: anywhere;
 }
