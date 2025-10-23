@@ -6,6 +6,11 @@ import { Button } from "@/components/ui/button";
 import { executeQuery } from "@/database";
 import { formatCurrency, formatDateTime, formatNumber } from "@/utils/formatters";
 import { Dialog, DialogClose, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import html2canvas from "html2canvas";
+import jsPDF from "jspdf";
+import { Browser } from "@capacitor/browser";
+import { Filesystem, Directory } from "@capacitor/filesystem";
+import { useToast } from "@/hooks/use-toast";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 
@@ -34,6 +39,9 @@ const PreviewComanda = () => {
   const [loading, setLoading] = useState(true);
   const [scale, setScale] = useState(1);
   const [isWhatsAppModalOpen, setIsWhatsAppModalOpen] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
+  const [whatsAppNumber, setWhatsAppNumber] = useState("");
+  const { toast } = useToast();
   const receiptRef = useRef<HTMLDivElement | null>(null);
   const headerRef = useRef<HTMLDivElement | null>(null);
   const actionsRef = useRef<HTMLDivElement | null>(null);
@@ -277,13 +285,57 @@ const PreviewComanda = () => {
           </DialogHeader>
           <div className="grid gap-2 py-2">
             <Label htmlFor="wa-number" className="sr-only">Número</Label>
-            <Input id="wa-number" type="tel" placeholder="ex: 12933482617" className="text-base" />
+            <Input
+              id="wa-number"
+              type="tel"
+              placeholder="ex: 12933482617"
+              className="text-base"
+              value={whatsAppNumber}
+              onChange={(e) => setWhatsAppNumber(e.target.value)}
+              disabled={isLoading}
+            />
           </div>
           <DialogFooter>
             <DialogClose asChild>
-              <Button variant="secondary" onClick={() => setIsWhatsAppModalOpen(false)}>Cancelar</Button>
+              <Button variant="secondary" onClick={() => setIsWhatsAppModalOpen(false)} disabled={isLoading}>Cancelar</Button>
             </DialogClose>
-            <Button className="bg-green-600 hover:bg-green-600/90">Abrir</Button>
+            <Button className="bg-green-600 hover:bg-green-600/90" onClick={async () => {
+              try {
+                if (!whatsAppNumber?.trim()) {
+                  toast({ description: "Número inválido.", variant: "destructive" as any });
+                  return;
+                }
+                setIsLoading(true);
+                const node = receiptRef.current;
+                if (!node) throw new Error("Preview não encontrado");
+                const canvas = await html2canvas(node, { scale: 2 });
+                const imgData = canvas.toDataURL("image/png");
+                // PDF em A7 aproximado na orientação retrato
+                const pdf = new jsPDF({ unit: "mm", format: "a7", orientation: "portrait" });
+                const pageW = pdf.internal.pageSize.getWidth();
+                const pageH = pdf.internal.pageSize.getHeight();
+                // calcular tamanho mantendo proporção
+                const imgW = pageW;
+                const imgH = (canvas.height * imgW) / canvas.width;
+                pdf.addImage(imgData, "PNG", 0, 0, imgW, Math.min(imgH, pageH));
+                const blob = pdf.output("blob");
+                const arrayBuffer = await blob.arrayBuffer();
+                const base64Data = btoa(String.fromCharCode(...new Uint8Array(arrayBuffer)));
+                await Filesystem.writeFile({
+                  path: `${whatsAppNumber}.pdf`,
+                  data: base64Data,
+                  directory: Directory.Documents,
+                });
+                await Browser.open({ url: `https://wa.me/+55${whatsAppNumber}` });
+                setIsWhatsAppModalOpen(false);
+              } catch (err) {
+                toast({ description: "Falha ao gerar ou abrir o WhatsApp. Verifique o número e tente novamente.", variant: "destructive" as any });
+              } finally {
+                setIsLoading(false);
+              }
+            }} disabled={isLoading}>
+              {isLoading ? "Gerando PDF..." : "Abrir"}
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
