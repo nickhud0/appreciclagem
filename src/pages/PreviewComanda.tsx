@@ -5,6 +5,9 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { executeQuery } from "@/database";
 import { formatCurrency, formatDateTime, formatNumber } from "@/utils/formatters";
+import { Dialog, DialogClose, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 
 type ComandaHeader = {
   comanda_id: number | null;
@@ -30,6 +33,7 @@ const PreviewComanda = () => {
   const [itens, setItens] = useState<ComandaItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [scale, setScale] = useState(1);
+  const [isWhatsAppModalOpen, setIsWhatsAppModalOpen] = useState(false);
   const receiptRef = useRef<HTMLDivElement | null>(null);
   const headerRef = useRef<HTMLDivElement | null>(null);
   const actionsRef = useRef<HTMLDivElement | null>(null);
@@ -247,7 +251,10 @@ const PreviewComanda = () => {
       {/* === BOTÕES FLUTUANTES FIXOS === */}
       <div className="fixed bottom-4 left-0 w-full flex justify-center z-50">
         <div ref={actionsRef} className="flex justify-center gap-3 w-[95%] max-w-sm bg-background/90 backdrop-blur-md p-3 rounded-2xl shadow-lg border border-border/30">
-          <button className="flex-1 py-3 rounded-lg bg-green-600 text-white font-semibold text-base shadow-sm active:scale-95">
+          <button
+            className="flex-1 py-3 rounded-lg bg-green-600 text-white font-semibold text-base shadow-sm active:scale-95"
+            onClick={() => setIsWhatsAppModalOpen(true)}
+          >
             WhatsApp
           </button>
           <button className="flex-1 py-3 rounded-lg bg-blue-600 text-white font-semibold text-base shadow-sm active:scale-95">
@@ -259,6 +266,27 @@ const PreviewComanda = () => {
         </div>
       </div>
       {console.log("✅ Botões renderizados na tela de Imprimir Última Comanda")}
+
+      <Dialog open={isWhatsAppModalOpen} onOpenChange={setIsWhatsAppModalOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Enviar pelo WhatsApp</DialogTitle>
+            <DialogDescription>
+              Informe o número do cliente com DDD. O código do país (+55) já está incluído automaticamente.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-2 py-2">
+            <Label htmlFor="wa-number" className="sr-only">Número</Label>
+            <Input id="wa-number" type="tel" placeholder="ex: 12933482617" className="text-base" />
+          </div>
+          <DialogFooter>
+            <DialogClose asChild>
+              <Button variant="secondary" onClick={() => setIsWhatsAppModalOpen(false)}>Cancelar</Button>
+            </DialogClose>
+            <Button className="bg-green-600 hover:bg-green-600/90">Abrir</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };
