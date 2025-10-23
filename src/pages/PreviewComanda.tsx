@@ -180,7 +180,7 @@ const PreviewComanda = () => {
             paddingRight: '10px',
           }}
         >
-          <div ref={receiptRef} className="w-auto mx-auto px-3 sm:px-4 overflow-hidden break-words bg-white text-gray-900 p-3 rounded-lg shadow-md border border-dashed border-gray-300 font-mono tracking-tight leading-tight">
+          <div ref={receiptRef} className="w-auto mx-auto px-3 sm:px-4 overflow-hidden break-words bg-white text-gray-900 p-3 rounded-lg shadow-md font-mono tracking-tight leading-tight">
           {/* Cabeçalho do cupom */}
           <div className="text-center text-lg font-bold">Reciclagem Perequê</div>
           <div className="text-center text-xs leading-tight my-1">
