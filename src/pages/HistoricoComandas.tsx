@@ -606,23 +606,23 @@ const HistoricoComandas = () => {
         <DialogContent className="mx-auto max-w-2xl w-full rounded-2xl p-0 overflow-hidden animate-in fade-in-0 zoom-in-95 duration-200">
           {selectedGroup && (
             <div className="bg-background">
-              <div className="border-b bg-muted/30 p-3 sm:p-4 md:p-5">
+              <div className="border-b bg-muted/30 p-3 sm:p-4 md:p-5 relative">
+                <button
+                  type="button"
+                  title="Visualizar comanda completa"
+                  aria-label="Visualizar comanda completa"
+                  className="absolute left-3 top-3 sm:left-4 sm:top-4 md:left-5 md:top-5 text-muted-foreground hover:text-primary transition"
+                  onClick={() => {
+                    setIsItemsDialogOpen(false);
+                    navigate('/preview-comanda', { state: { comandaSelecionada: selectedGroup } });
+                  }}
+                >
+                  <Eye className="h-5 w-5" />
+                </button>
                 <div className="flex flex-col items-center text-center gap-2">
                   <div className="flex items-center gap-2 relative">
                     <Receipt className="h-4 w-4 text-muted-foreground" />
                     <h3 className="text-lg font-bold text-foreground">Comanda {getDisplayCodigo(selectedGroup)}</h3>
-                    <button
-                      type="button"
-                      title="Visualizar comanda completa"
-                      aria-label="Visualizar comanda completa"
-                      className="absolute right-0 -top-1 text-muted-foreground hover:text-primary transition"
-                      onClick={() => {
-                        setIsItemsDialogOpen(false);
-                        navigate('/preview-comanda', { state: { comandaSelecionada: selectedGroup } });
-                      }}
-                    >
-                      <Eye className="h-5 w-5" />
-                    </button>
                   </div>
                   <div className="mt-1 flex items-center gap-2">
                     {(() => {
