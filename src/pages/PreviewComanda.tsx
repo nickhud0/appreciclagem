@@ -78,6 +78,33 @@ const PreviewComanda = () => {
         setLoading(false);
       }
     }
+    const nav = window.history.state && (window.history.state as any).usr;
+    const fromState = nav && (nav as any).comandaSelecionada;
+    if (fromState && typeof fromState === 'object') {
+      setHeader({
+        comanda_id: Number((fromState as any).comanda_id) || null,
+        comanda_data: (fromState as any).comanda_data || null,
+        codigo: (fromState as any).codigo || null,
+        comanda_tipo: (fromState as any).comanda_tipo || null,
+        observacoes: (fromState as any).observacoes || null,
+        comanda_total: Number((fromState as any).comanda_total) || null,
+      });
+      try {
+        const items = Array.isArray((fromState as any).items) ? (fromState as any).items : [];
+        setItens(items.map((it: any, idx: number) => ({
+          item_id: idx + 1,
+          material_id: Number(it.material_id) || null,
+          material_nome: it.material_nome ?? null,
+          preco_kg: Number(it.preco_kg) || 0,
+          kg_total: Number(it.kg_total) || 0,
+          item_valor_total: Number(it.item_valor_total ?? ((Number(it.kg_total)||0) * (Number(it.preco_kg)||0))) || 0,
+        })));
+      } catch {
+        setItens([]);
+      }
+      setLoading(false);
+      return;
+    }
     void loadLatestComanda();
   }, []);
 
