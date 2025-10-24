@@ -10,6 +10,7 @@ import html2canvas from "html2canvas";
 import jsPDF from "jspdf";
 import { Browser } from "@capacitor/browser";
 import { Filesystem, Directory } from "@capacitor/filesystem";
+import { Capacitor } from "@capacitor/core";
 import { useToast } from "@/hooks/use-toast";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -292,7 +293,71 @@ const PreviewComanda = () => {
           >
             WhatsApp
           </button>
-          <button className="flex-1 py-3 rounded-lg bg-blue-600 text-white font-semibold text-base shadow-sm active:scale-95">
+          <button className="flex-1 py-3 rounded-lg bg-blue-600 text-white font-semibold text-base shadow-sm active:scale-95" onClick={async () => {
+            try {
+              const node = receiptRef.current;
+              if (!node) throw new Error("Pré-visualização da comanda não encontrada");
+
+              // Capturar conteúdo com nitidez
+              const canvas = await html2canvas(node, { scale: 2, backgroundColor: "#FFFFFF" });
+              const imgData = canvas.toDataURL("image/png", 1.0);
+
+              // PDF térmico 58mm, com 2mm de margem, altura proporcional
+              const paperWidthMm = 58;
+              const marginMm = 2;
+              const contentWidthMm = Math.max(1, paperWidthMm - marginMm * 2);
+              const imgHeightMm = (canvas.height / canvas.width) * contentWidthMm;
+              const pageHeightMm = Math.max(1, imgHeightMm + marginMm * 2);
+
+              const pdf = new jsPDF({ unit: "mm", format: [paperWidthMm, pageHeightMm], orientation: "portrait" });
+              pdf.addImage(imgData, "PNG", marginMm, marginMm, contentWidthMm, imgHeightMm);
+
+              // Converter para base64
+              const dataUri = pdf.output("datauristring");
+              const base64Data = dataUri.includes(",") ? dataUri.split(",")[1] : dataUri;
+
+              // Nome do arquivo
+              const codigoRaw = (header?.codigo && String(header.codigo).trim()) || "comanda";
+              const codigo = codigoRaw.replace(/[^A-Za-z0-9._-]/g, "_");
+              const filename = `${codigo}.pdf`;
+
+              // Permissões (Android) — solicitação mínima se necessário
+              try {
+                const status = await Filesystem.checkPermissions();
+                const state = (status as any)?.publicStorage || (status as any)?.state;
+                if (state && String(state).toLowerCase() !== "granted") {
+                  await Filesystem.requestPermissions();
+                }
+              } catch {}
+
+              // Salvar preferencialmente em Downloads; fallback para Documents
+              try {
+                await Filesystem.writeFile({
+                  path: filename,
+                  data: base64Data,
+                  directory: Directory.Downloads,
+                  recursive: true,
+                  encoding: 'base64' as any,
+                  mimeType: 'application/pdf' as any,
+                });
+              } catch {
+                try {
+                  await Filesystem.writeFile({
+                    path: filename,
+                    data: base64Data,
+                    directory: Directory.Documents,
+                    recursive: true,
+                    encoding: 'base64' as any,
+                    mimeType: 'application/pdf' as any,
+                  });
+                } catch (err2) {
+                  throw err2;
+                }
+              }
+            } catch (err) {
+              toast({ description: "Falha ao salvar o PDF. Tente novamente.", variant: "destructive" as any });
+            }
+          }}>
             PDF
           </button>
           <button className="flex-1 py-3 rounded-lg bg-gray-700 text-white font-semibold text-base shadow-sm active:scale-95">
@@ -300,7 +365,7 @@ const PreviewComanda = () => {
           </button>
         </div>
       </div>
-      {console.log("✅ Botões renderizados na tela de Imprimir Última Comanda")}
+      
 
       <Dialog open={isWhatsAppModalOpen} onOpenChange={setIsWhatsAppModalOpen}>
         <DialogContent className="max-w-md">
@@ -327,41 +392,69 @@ const PreviewComanda = () => {
               <Button variant="secondary" onClick={() => setIsWhatsAppModalOpen(false)} disabled={isLoading}>Cancelar</Button>
             </DialogClose>
             <Button className="bg-green-600 hover:bg-green-600/90" onClick={async () => {
+              const sanitizePhoneNumber = (input: string) => {
+                try {
+                  const digits = String(input || "").replace(/\D+/g, "");
+                  const trimmed = digits.startsWith("55") ? digits.slice(2) : digits;
+                  return trimmed;
+                } catch { return ""; }
+              };
+              const isValidPhoneNumber = (digits: string) => digits.length === 10 || digits.length === 11;
+
               try {
-                if (!whatsAppNumber?.trim()) {
-                  toast({ description: "Número inválido.", variant: "destructive" as any });
+                const sanitized = sanitizePhoneNumber(whatsAppNumber);
+                if (!isValidPhoneNumber(sanitized)) {
+                  toast({ description: "Número inválido. Informe DDD + número (10–11 dígitos).", variant: "destructive" as any });
                   return;
                 }
                 setIsLoading(true);
+
+                const isWeb = Capacitor.getPlatform() === "web";
+                const codigo = (header?.codigo || "comanda").toString();
+                const waUrl = `https://wa.me/+55${sanitized}`;
+
+                if (isWeb) {
+                  await Browser.open({ url: waUrl });
+                  setIsWhatsAppModalOpen(false);
+                  return;
+                }
+
                 const node = receiptRef.current;
-                if (!node) throw new Error("Preview não encontrado");
-                const canvas = await html2canvas(node, { scale: 2 });
-                const imgData = canvas.toDataURL("image/png");
-                // PDF em A7 aproximado na orientação retrato
-                const pdf = new jsPDF({ unit: "mm", format: "a7", orientation: "portrait" });
-                const pageW = pdf.internal.pageSize.getWidth();
-                const pageH = pdf.internal.pageSize.getHeight();
-                // calcular tamanho mantendo proporção
-                const imgW = pageW;
-                const imgH = (canvas.height * imgW) / canvas.width;
-                pdf.addImage(imgData, "PNG", 0, 0, imgW, Math.min(imgH, pageH));
+                if (!node) throw new Error("Pré-visualização da comanda não encontrada");
+
+                const canvas = await html2canvas(node, { scale: 2, backgroundColor: "#ffffff" });
+                const imgData = canvas.toDataURL("image/png", 1.0);
+
+                const paperWidthMm = 58;
+                const marginMm = 2;
+                const contentWidthMm = Math.max(1, paperWidthMm - marginMm * 2);
+                const imgHeightMm = (canvas.height / canvas.width) * contentWidthMm;
+                const pageHeightMm = Math.max(1, imgHeightMm + marginMm * 2);
+
+                const pdf = new jsPDF({ unit: "mm", format: [paperWidthMm, pageHeightMm], orientation: "portrait" });
+                pdf.addImage(imgData, "PNG", marginMm, marginMm, contentWidthMm, imgHeightMm);
+
                 const blob = pdf.output("blob");
                 const arrayBuffer = await blob.arrayBuffer();
                 const base64Data = btoa(String.fromCharCode(...new Uint8Array(arrayBuffer)));
+
+                const filename = `${codigo}-${sanitized}.pdf`;
                 await Filesystem.writeFile({
-                  path: `${whatsAppNumber}.pdf`,
+                  path: filename,
                   data: base64Data,
-                  directory: Directory.Documents,
+                  directory: Directory.Downloads,
+                  recursive: true,
                 });
-                await Browser.open({ url: `https://wa.me/+55${whatsAppNumber}` });
+
+                await Browser.open({ url: waUrl });
                 setIsWhatsAppModalOpen(false);
               } catch (err) {
-                toast({ description: "Falha ao gerar ou abrir o WhatsApp. Verifique o número e tente novamente.", variant: "destructive" as any });
+                toast({ description: "Falha ao preparar ou abrir o WhatsApp. Verifique o número e tente novamente.", variant: "destructive" as any });
               } finally {
                 setIsLoading(false);
               }
             }} disabled={isLoading}>
-              {isLoading ? "Gerando PDF..." : "Abrir"}
+              {isLoading ? "Preparando..." : "Abrir"}
             </Button>
           </DialogFooter>
         </DialogContent>
