@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Teste PDF 58mm</title>
+  <style>
+    body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, sans-serif; background: #0b0b0c; color: #eaeaea; padding: 16px; }
+    .card { background: #111214; border: 1px solid #222; border-radius: 12px; padding: 16px; max-width: 720px; margin: 0 auto; }
+    .row { display: flex; gap: 12px; align-items: center; justify-content: space-between; }
+    .btn { padding: 8px 14px; border-radius: 8px; border: 1px solid #2a2a2a; background: #1e40af; color: white; cursor: pointer; }
+    .btn:active { transform: scale(0.98); }
+    .preview-wrap { display: flex; justify-content: center; margin-top: 16px; }
+    /* Área que representa o cupom em tela (largura ~340px pois há escala na app) */
+    #receipt { width: 340px; background: white; color: black; padding: 10px 12px; border-radius: 10px; box-shadow: 0 2px 10px rgba(0,0,0,.25); }
+    .title { text-align: center; font-weight: 800; font-size: 18px; }
+    .sub { text-align: center; font-size: 12px; line-height: 1.1; margin: 6px 0; }
+    .hr { border-top: 1px solid #aaa; margin: 8px 0; }
+    .grid { display: grid; grid-template-columns: 40% 15% 22% 23%; gap: 4px; font-size: 12px; }
+    .bold { font-weight: 700; }
+    .right { text-align: right; }
+    .center { text-align: center; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="row">
+      <h2>Teste de Exportação PDF 58mm</h2>
+      <button id="btn" class="btn">Gerar e abrir PDF</button>
+    </div>
+    <p>Este teste cria um PDF a partir do recibo abaixo com 3 itens e valida a renderização em formato 58mm. Ele abre o PDF em uma nova aba/janela do navegador.</p>
+    <div class="preview-wrap">
+      <div id="receipt">
+        <div class="title">Cliente: Maria da Silva</div>
+        <div class="sub">
+          <div>Ubatuba, Perequê Mirim</div>
+          <div>Av. Marginal, 2504</div>
+          <div>12 99162-0321</div>
+        </div>
+        <div class="hr"></div>
+        <div class="center">
+          <div class="bold">TR-MOCK-001</div>
+          <div>10/10/2025 14:22</div>
+          <div class="bold">VENDA</div>
+        </div>
+        <div class="hr"></div>
+        <div class="grid bold">
+          <div>Material</div>
+          <div class="right">Kg</div>
+          <div class="right">Preço</div>
+          <div class="right">Total</div>
+        </div>
+        <div class="hr" style="border-top: 1px dotted #aaa"></div>
+        <div class="grid">
+          <div>Alumínio</div>
+          <div class="right">2,50</div>
+          <div class="right">R$ 6,40</div>
+          <div class="right">R$ 16,00</div>
+        </div>
+        <div class="grid">
+          <div>Cobre</div>
+          <div class="right">1,20</div>
+          <div class="right">R$ 25,00</div>
+          <div class="right">R$ 30,00</div>
+        </div>
+        <div class="grid">
+          <div>Papelão</div>
+          <div class="right">3,00</div>
+          <div class="right">R$ 1,50</div>
+          <div class="right">R$ 4,50</div>
+        </div>
+        <div class="hr"></div>
+        <div class="center bold">TOTAL: R$ 50,50</div>
+        <div class="hr"></div>
+        <div class="center bold" style="margin-top:8px;">Deus seja louvado</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- libs via CDN apenas para teste local -->
+  <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/jspdf@3.0.3/dist/jspdf.umd.min.js"></script>
+  <script>
+    const btn = document.getElementById('btn');
+    const receipt = document.getElementById('receipt');
+    btn.addEventListener('click', async () => {
+      const { jsPDF } = window.jspdf;
+      const canvas = await html2canvas(receipt, { scale: 2, backgroundColor: '#FFFFFF' });
+      const imgData = canvas.toDataURL('image/png', 1.0);
+      const paperWidthMm = 58;
+      const marginMm = 2;
+      const contentWidthMm = Math.max(1, paperWidthMm - marginMm * 2);
+      const imgHeightMm = (canvas.height / canvas.width) * contentWidthMm;
+      const pageHeightMm = Math.max(1, imgHeightMm + marginMm * 2);
+      const pdf = new jsPDF({ unit: 'mm', format: [paperWidthMm, pageHeightMm], orientation: 'portrait' });
+      pdf.addImage(imgData, 'PNG', marginMm, marginMm, contentWidthMm, imgHeightMm);
+      const blob = pdf.output('blob');
+      const url = URL.createObjectURL(blob);
+      window.open(url, '_blank');
+    });
+  </script>
+</body>
+</html>
+
+

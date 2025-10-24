@@ -312,16 +312,31 @@ const PreviewComanda = () => {
               const pdf = new jsPDF({ unit: "mm", format: [paperWidthMm, pageHeightMm], orientation: "portrait" });
               pdf.addImage(imgData, "PNG", marginMm, marginMm, contentWidthMm, imgHeightMm);
 
-              // Converter para base64
-              const dataUri = pdf.output("datauristring");
-              const base64Data = dataUri.includes(",") ? dataUri.split(",")[1] : dataUri;
+              // Converter para base64 via Blob + FileReader (mais confiável no Android)
+              const blob = pdf.output("blob");
+              const base64Data: string = await new Promise((resolve, reject) => {
+                try {
+                  const reader = new FileReader();
+                  reader.onloadend = () => {
+                    try {
+                      const result = String(reader.result || "");
+                      const idx = result.indexOf(",");
+                      resolve(idx >= 0 ? result.slice(idx + 1) : result);
+                    } catch (e) { reject(e); }
+                  };
+                  reader.onerror = (e) => reject(e);
+                  reader.readAsDataURL(blob);
+                } catch (e) {
+                  reject(e);
+                }
+              });
 
               // Nome do arquivo
               const codigoRaw = (header?.codigo && String(header.codigo).trim()) || "comanda";
               const codigo = codigoRaw.replace(/[^A-Za-z0-9._-]/g, "_");
               const filename = `${codigo}.pdf`;
 
-              // Permissões (Android) — solicitação mínima se necessário
+              // Permissões (Android) — solicitar se necessário
               try {
                 const status = await Filesystem.checkPermissions();
                 const state = (status as any)?.publicStorage || (status as any)?.state;
@@ -330,7 +345,8 @@ const PreviewComanda = () => {
                 }
               } catch {}
 
-              // Salvar preferencialmente em Downloads; fallback para Documents
+              // Salvar automaticamente em Downloads; fallback para Documents
+              let saved = false;
               try {
                 await Filesystem.writeFile({
                   path: filename,
@@ -340,6 +356,7 @@ const PreviewComanda = () => {
                   encoding: 'base64' as any,
                   mimeType: 'application/pdf' as any,
                 });
+                saved = true;
               } catch {
                 try {
                   await Filesystem.writeFile({
@@ -350,9 +367,14 @@ const PreviewComanda = () => {
                     encoding: 'base64' as any,
                     mimeType: 'application/pdf' as any,
                   });
+                  saved = true;
                 } catch (err2) {
                   throw err2;
                 }
+              }
+
+              if (saved) {
+                toast({ description: "PDF salvo com sucesso" as any });
               }
             } catch (err) {
               toast({ description: "Falha ao salvar o PDF. Tente novamente.", variant: "destructive" as any });
