@@ -151,6 +151,23 @@ async function pushPending(): Promise<void> {
             .from('material')
             .upsert(remote, { onConflict: 'id' })
             .select());
+        } else if (table === 'comanda') {
+          // Map and sanitize payload for Supabase 'comanda' table
+          // Use upsert on unique codigo to avoid duplicate-code errors keeping the item in queue
+          const remote: Record<string, any> = {};
+          if (payload.id != null) remote.id = payload.id;
+          if (payload.data != null) remote.data = payload.data;
+          if (payload.codigo != null) remote.codigo = String(payload.codigo);
+          if (payload.tipo != null) remote.tipo = String(payload.tipo).toLowerCase();
+          if (payload.observacoes != null) remote.observacoes = payload.observacoes;
+          if (payload.total != null) remote.total = Number(payload.total) || 0;
+          if (payload.criado_por != null) remote.criado_por = payload.criado_por;
+          if (payload.atualizado_por != null) remote.atualizado_por = payload.atualizado_por;
+
+          ({ data, error } = await client
+            .from('comanda')
+            .upsert(remote, { onConflict: 'codigo' })
+            .select());
         } else if (table === 'item') {
           // Map and sanitize payload for Supabase 'item' table
           const remote: Record<string, any> = {};

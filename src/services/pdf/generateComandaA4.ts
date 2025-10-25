@@ -29,6 +29,10 @@ function sanitizeFilename(input: string): string {
   return safe || "comanda";
 }
 
+function mmToPt(mm: number): number {
+  return (mm * 72) / 25.4;
+}
+
 function bytesToBase64(bytes: Uint8Array): string {
   // Conversão robusta de bytes para base64 usando chunks para evitar estouro de pilha
   let binary = "";
@@ -60,19 +64,105 @@ export async function generateAndSaveComandaA4Pdf({ header, groupedItens, total 
 
   // Create PDF
   const pdfDoc = await PDFDocument.create();
-  const pageSize: [number, number] = [595.28, 841.89]; // A4 in points
-  let page = pdfDoc.addPage(pageSize);
+  // Receipt format: 58mm width (typical thermal) with dynamic height
+  const paperWidthMm = 58;
+  const marginMm = 3; // pleasant compact margins
+  const paperWidthPt = mmToPt(paperWidthMm);
+  const marginPt = mmToPt(marginMm);
 
   const helvetica = await pdfDoc.embedFont(StandardFonts.Helvetica);
   const helveticaBold = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
 
-  // Margins and layout
-  const marginLeft = 40;
-  const marginRight = 40;
-  const marginTop = 48;
-  const marginBottom = 48;
-  const width = pageSize[0];
-  const height = pageSize[1];
+  // Visual scale and spacing tuned for small receipts
+  const titleSize = 14;
+  const subSize = 8.5;
+  const metaSize = 9.5;
+  const headerSize = 9.5;
+  const bodySize = 9.5;
+  const totalSize = 12;
+  const footerSize = 10;
+
+  const lineThin = 0.5;
+  const gapXS = 6;
+  const gapSM = 8;
+  const gapMD = 10;
+  const gapLG = 14;
+
+  const availableWidthPt = paperWidthPt - marginPt * 2;
+
+  // Helper: wrap text into lines by width
+  const wrapText = (text: string, maxWidth: number, font: any, size: number): string[] => {
+    const words = String(text || '').split(/\s+/);
+    const lines: string[] = [];
+    let current = '';
+    for (const w of words) {
+      const test = current ? current + ' ' + w : w;
+      const width = font.widthOfTextAtSize(test, size);
+      if (width <= maxWidth) {
+        current = test;
+      } else {
+        if (current) lines.push(current);
+        // If a single word is longer than max width, hard cut
+        if (font.widthOfTextAtSize(w, size) > maxWidth) {
+          let slice = '';
+          for (const ch of w) {
+            const s2 = slice + ch;
+            if (font.widthOfTextAtSize(s2, size) <= maxWidth) slice = s2; else { lines.push(slice); slice = ch; }
+          }
+          current = slice;
+        } else {
+          current = w;
+        }
+      }
+    }
+    if (current) lines.push(current);
+    return lines;
+  };
+
+  // Estimate dynamic height before creating the page
+  const estimateHeight = () => {
+    let h = 0;
+    // Top margin
+    h += marginPt;
+    // Title + brand lines
+    h += titleSize + gapSM; // title
+    h += subSize + gapXS;   // city
+    h += subSize + gapXS;   // address
+    h += subSize + gapSM;   // CNPJ
+    // Metadata (2 lines)
+    h += metaSize + gapXS; // code/date
+    h += metaSize + gapMD; // tipo
+    // Table header + divider
+    h += headerSize + gapXS + lineThin + gapXS;
+    // Rows
+    const rowBlock = (bodySize + 4) + gapXS + lineThin + gapXS; // text + small gap + divider + gap
+    h += Math.max(0, groupedItens.length) * rowBlock;
+    // Totals
+    h += gapSM + totalSize + gapMD;
+    // Observações (wrapped)
+    if (header?.observacoes) {
+      const obsLines = wrapText(String(header.observacoes || ''), availableWidthPt, helvetica, 9.5);
+      h += obsLines.length * (9.5 + 4) + gapXS;
+    }
+    // Footer
+    h += footerSize + gapSM;
+    // Bottom margin
+    h += marginPt;
+    // Minimum height for visual balance
+    const minHeightPt = mmToPt(100);
+    return Math.max(h, minHeightPt);
+  };
+
+  const pageHeightPt = estimateHeight();
+  let page = pdfDoc.addPage([paperWidthPt, pageHeightPt]);
+
+  // Margins and layout references
+  const marginLeft = marginPt;
+  const marginRight = marginPt;
+  const marginTop = marginPt;
+  const marginBottom = marginPt;
+  const width = page.getSize().width;
+  const height = page.getSize().height;
   let cursorY = height - marginTop;
 
   const drawText = (text: string, opts: { x?: number; y?: number; size?: number; font?: any; color?: any; align?: 'left' | 'center' | 'right'; maxWidth?: number }) => {
@@ -93,57 +183,54 @@ export async function generateAndSaveComandaA4Pdf({ header, groupedItens, total 
 
   const moveY = (dy: number) => { cursorY -= dy; };
 
-  // Header
-  drawText("RECICLAGEM PEREQUÊ", { size: 18, font: helveticaBold, align: 'center' });
-  moveY(22);
-  drawText("Ubatuba • Perequê Mirim", { size: 10, align: 'center', color: rgb(0.42, 0.45, 0.50) });
-  moveY(14);
-  drawText("Av. Marginal, 2504", { size: 10, align: 'center', color: rgb(0.42, 0.45, 0.50) });
-  moveY(14);
-  drawText("CNPJ: 45.492.161/0001-88", { size: 10, align: 'center', color: rgb(0.42, 0.45, 0.50) });
-  moveY(18);
+  // Header (brand)
+  drawText("RECICLAGEM PEREQUÊ", { size: titleSize, font: helveticaBold, align: 'center' });
+  moveY(gapSM);
+  drawText("Ubatuba • Perequê Mirim", { size: subSize, align: 'center', color: rgb(0.42, 0.45, 0.50) });
+  moveY(gapXS);
+  drawText("Av. Marginal, 2504", { size: subSize, align: 'center', color: rgb(0.42, 0.45, 0.50) });
+  moveY(gapXS);
+  drawText("CNPJ: 45.492.161/0001-88", { size: subSize, align: 'center', color: rgb(0.42, 0.45, 0.50) });
+  moveY(gapSM);
 
   // Metadata (Código / Data/Hora / Tipo)
-  const metaSize = 10;
-  const metaGap = 14;
   const codeTxt = `Código: ${codigo}`;
   const dateTxt = `Data/Hora: ${header?.comanda_data ? formatDateTime(header.comanda_data) : '—'}`;
   drawText(codeTxt, { size: metaSize, align: 'left' });
   drawText(dateTxt, { size: metaSize, align: 'right' });
-  moveY(metaGap);
+  moveY(gapMD);
   const tipoTxt = `Tipo: ${String(header?.comanda_tipo || '—').toUpperCase()}`;
   drawText(tipoTxt, { size: metaSize, align: 'left' });
-  moveY(18);
+  moveY(gapSM);
 
   // Table header
   const availableWidth = width - marginLeft - marginRight;
-  const colW3 = 50; // KG
-  const colW4 = 60; // Total
-  const colW2 = 55; // Preço
-  const colW1 = Math.max(80, availableWidth - (colW2 + colW3 + colW4));
+  // Column layout tuned for small receipt width
+  const colW1 = Math.max(60, availableWidth * 0.52); // Material
+  const colW2 = Math.max(24, availableWidth * 0.16); // Preço
+  const colW3 = Math.max(24, availableWidth * 0.16); // KG
+  const colW4 = Math.max(28, availableWidth - (colW1 + colW2 + colW3)); // Total
   const colX1 = marginLeft;
   const colX2 = colX1 + colW1;
   const colX3 = colX2 + colW2;
   const colX4 = colX3 + colW3;
 
-  const headerSize = 10;
-  page.drawText("Material", { x: colX1, y: cursorY, size: headerSize, font: helveticaBold, color: rgb(0.22, 0.25, 0.31) });
+  page.drawText("Material", { x: colX1, y: cursorY, size: headerSize, font: helveticaBold, color: rgb(0.18, 0.20, 0.26) });
   const kgHeader = "KG";
   const kgWidth = helveticaBold.widthOfTextAtSize(kgHeader, headerSize);
-  page.drawText(kgHeader, { x: colX2 + (colW2 - kgWidth) / 2, y: cursorY, size: headerSize, font: helveticaBold, color: rgb(0.22, 0.25, 0.31) });
+  page.drawText(kgHeader, { x: colX3 + (colW3 - kgWidth) / 2, y: cursorY, size: headerSize, font: helveticaBold, color: rgb(0.18, 0.20, 0.26) });
   const precoHeader = "Preço";
   const precoWidth = helveticaBold.widthOfTextAtSize(precoHeader, headerSize);
-  page.drawText(precoHeader, { x: colX3 + (colW3 - precoWidth) / 2, y: cursorY, size: headerSize, font: helveticaBold, color: rgb(0.22, 0.25, 0.31) });
+  page.drawText(precoHeader, { x: colX2 + (colW2 - precoWidth) / 2, y: cursorY, size: headerSize, font: helveticaBold, color: rgb(0.18, 0.20, 0.26) });
   const totalHeader = "Total";
   const totalWidth = helveticaBold.widthOfTextAtSize(totalHeader, headerSize);
-  page.drawText(totalHeader, { x: colX4 + colW4 - totalWidth, y: cursorY, size: headerSize, font: helveticaBold, color: rgb(0.22, 0.25, 0.31) });
-  moveY(12);
-  // Horizontal divider
-  page.drawRectangle({ x: marginLeft, y: cursorY - 0.25, width: availableWidth, height: 0.5, color: rgb(0.90, 0.91, 0.93) });
-  moveY(6);
+  page.drawText(totalHeader, { x: colX4 + colW4 - totalWidth, y: cursorY, size: headerSize, font: helveticaBold, color: rgb(0.18, 0.20, 0.26) });
+  moveY(gapXS);
+  // Divider
+  page.drawRectangle({ x: marginLeft, y: cursorY - 0.25, width: availableWidth, height: lineThin, color: rgb(0.88, 0.90, 0.94) });
+  moveY(gapXS);
 
   // Helpers for table rows
-  const bodySize = 10;
   const lineGap = 4;
 
   function truncateToWidth(text: string, maxWidth: number, font: any, size: number): string {
@@ -168,21 +255,7 @@ export async function generateAndSaveComandaA4Pdf({ header, groupedItens, total 
 
   // Render rows
   for (const g of groupedItens) {
-    if (cursorY < marginBottom + 24) {
-      page = pdfDoc.addPage(pageSize);
-      cursorY = height - marginTop;
-      // Re-draw header row on new page
-      page.drawText("Material", { x: colX1, y: cursorY, size: headerSize, font: helveticaBold, color: rgb(0.22, 0.25, 0.31) });
-      const kgW = helveticaBold.widthOfTextAtSize(kgHeader, headerSize);
-      page.drawText(kgHeader, { x: colX2 + (colW2 - kgW) / 2, y: cursorY, size: headerSize, font: helveticaBold, color: rgb(0.22, 0.25, 0.31) });
-      const precoW = helveticaBold.widthOfTextAtSize(precoHeader, headerSize);
-      page.drawText(precoHeader, { x: colX3 + (colW3 - precoW) / 2, y: cursorY, size: headerSize, font: helveticaBold, color: rgb(0.22, 0.25, 0.31) });
-      const totalW2 = helveticaBold.widthOfTextAtSize(totalHeader, headerSize);
-      page.drawText(totalHeader, { x: colX4 + colW4 - totalW2, y: cursorY, size: headerSize, font: helveticaBold, color: rgb(0.22, 0.25, 0.31) });
-      moveY(12);
-      page.drawRectangle({ x: marginLeft, y: cursorY - 0.25, width: availableWidth, height: 0.5, color: rgb(0.90, 0.91, 0.93) });
-      moveY(6);
-    }
+    // Note: dynamic page height was estimated to fit; if extreme overflow, rows may clip.
 
     const nomeTxt = truncateToWidth(String(g.nome || ''), colW1 - 2, helvetica, bodySize);
     const kgTxt = formatNumber(Number(g.kg || 0), 2);
@@ -190,52 +263,39 @@ export async function generateAndSaveComandaA4Pdf({ header, groupedItens, total 
     const totalTxt = formatCurrency(Number(g.total || 0));
 
     page.drawText(nomeTxt, { x: colX1, y: cursorY, size: bodySize, font: helvetica, color: rgb(0.066, 0.094, 0.153) });
-    const kgTxtW = helvetica.widthOfTextAtSize(kgTxt, bodySize);
-    page.drawText(kgTxt, { x: colX2 + (colW2 - kgTxtW) / 2, y: cursorY, size: bodySize, font: helvetica, color: rgb(0.066, 0.094, 0.153) });
     const precoTxtW = helvetica.widthOfTextAtSize(precoTxt, bodySize);
-    page.drawText(precoTxt, { x: colX3 + (colW3 - precoTxtW) / 2, y: cursorY, size: bodySize, font: helvetica, color: rgb(0.066, 0.094, 0.153) });
-    const totalTxtW = helvetica.widthOfTextAtSize(totalTxt, bodySize);
+    page.drawText(precoTxt, { x: colX2 + (colW2 - precoTxtW) / 2, y: cursorY, size: bodySize, font: helvetica, color: rgb(0.066, 0.094, 0.153) });
+    const kgTxtW = helvetica.widthOfTextAtSize(kgTxt, bodySize);
+    page.drawText(kgTxt, { x: colX3 + (colW3 - kgTxtW) / 2, y: cursorY, size: bodySize, font: helvetica, color: rgb(0.066, 0.094, 0.153) });
+    const totalTxtW = helveticaBold.widthOfTextAtSize(totalTxt, bodySize);
     page.drawText(totalTxt, { x: colX4 + colW4 - totalTxtW, y: cursorY, size: bodySize, font: helveticaBold, color: rgb(0.066, 0.094, 0.153) });
     moveY(bodySize + lineGap);
     // Row divider
     page.drawRectangle({ x: marginLeft, y: cursorY - 0.15, width: availableWidth, height: 0.3, color: rgb(0.90, 0.91, 0.93) });
-    moveY(6);
+    moveY(gapXS);
   }
 
   // Totals
   moveY(8);
   const totalLabel = "TOTAL";
   const totalValue = formatCurrency(Number(total || 0));
-  const totalSize = 12;
   page.drawText(totalLabel, { x: marginLeft, y: cursorY, size: totalSize, font: helveticaBold, color: rgb(0.066, 0.094, 0.153) });
   const totalValueW = helveticaBold.widthOfTextAtSize(totalValue, totalSize);
   page.drawText(totalValue, { x: width - marginRight - totalValueW, y: cursorY, size: totalSize, font: helveticaBold, color: rgb(0.066, 0.094, 0.153) });
-  moveY(18);
+  moveY(gapMD);
 
   if (header?.observacoes) {
     const obs = String(header.observacoes || '');
-    // simple wrap for obs
-    const obsSize = 10;
-    const maxWidth = width - marginLeft - marginRight;
-    let start = 0;
-    while (start < obs.length) {
-      let end = obs.length;
-      while (end > start) {
-        const slice = obs.slice(start, end);
-        if (helvetica.widthOfTextAtSize(slice, obsSize) <= maxWidth) break;
-        end--;
-      }
-      const line = obs.slice(start, end);
-      page.drawText(line, { x: marginLeft, y: cursorY, size: obsSize, font: helvetica, color: rgb(0.29, 0.33, 0.39) });
-      moveY(obsSize + 4);
-      start = end;
+    const lines = wrapText(obs, availableWidth, helvetica, 9.5);
+    for (const line of lines) {
+      page.drawText(line, { x: marginLeft, y: cursorY, size: 9.5, font: helvetica, color: rgb(0.29, 0.33, 0.39) });
+      moveY(9.5 + 4);
     }
-    moveY(6);
+    moveY(gapXS);
   }
 
   // Footer
   const footerTxt = "Deus seja louvado";
-  const footerSize = 11;
   const footerW = helveticaBold.widthOfTextAtSize(footerTxt, footerSize);
   page.drawText(footerTxt, { x: marginLeft + (availableWidth - footerW) / 2, y: cursorY, size: footerSize, font: helveticaBold, color: rgb(0.066, 0.094, 0.153) });
 

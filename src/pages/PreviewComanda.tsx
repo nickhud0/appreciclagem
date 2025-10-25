@@ -210,7 +210,7 @@ const PreviewComanda = () => {
       >
         {/* Cabeçalho do recibo */}
         <div className="text-center">
-          <div className="text-lg font-semibold">Reciclagem Perequê</div>
+          <div className="text-base font-bold tracking-wide">RECICLAGEM PEREQUÊ</div>
           <div className="text-xs text-muted-foreground mt-1 space-y-0.5">
             <div>Ubatuba, Perequê Mirim</div>
             <div>Av. Marginal, 2504</div>
@@ -237,20 +237,20 @@ const PreviewComanda = () => {
           <div className="text-center text-[13px]">Nenhum item</div>
         ) : (
           <div>
-            {/* Cabeçalho de colunas */}
-            <div className="grid grid-cols-[55%_15%_15%_15%] text-xs font-semibold text-muted-foreground">
+            {/* Cabeçalho de colunas (Material | Preço | KG | Total) */}
+            <div className="grid grid-cols-[52%_16%_16%_16%] text-xs font-semibold text-muted-foreground">
               <div>Material</div>
-              <div className="text-right whitespace-nowrap">Kg</div>
               <div className="text-right whitespace-nowrap">Preço</div>
+              <div className="text-right whitespace-nowrap">KG</div>
               <div className="text-right whitespace-nowrap">Total</div>
             </div>
             <div className="border-b border-dotted border-border/40 my-1" />
             <div className="divide-y divide-border/30">
               {groupedItens.map((g, idx) => (
-                <div key={idx} className="grid grid-cols-[55%_15%_15%_15%] items-center py-2 text-sm">
+                <div key={idx} className="grid grid-cols-[52%_16%_16%_16%] items-center py-2 text-sm">
                   <div className="pr-2 truncate whitespace-nowrap">{g.nome}</div>
-                  <div className="text-right tabular-nums whitespace-nowrap">{formatNumber(g.kg, 2)}</div>
                   <div className="text-right tabular-nums whitespace-nowrap">{formatCurrency(g.precoMedio)}</div>
+                  <div className="text-right tabular-nums whitespace-nowrap">{formatNumber(g.kg, 2)}</div>
                   <div className="text-right tabular-nums whitespace-nowrap font-semibold">{formatCurrency(g.total)}</div>
                 </div>
               ))}
@@ -261,8 +261,9 @@ const PreviewComanda = () => {
         <hr className="my-2 border-border/40" />
 
         {/* Totais */}
-        <div className="text-center text-base font-semibold">
-          TOTAL: {formatCurrency(Number(totalCalculado) || 0)}
+        <div className="grid grid-cols-2 text-base font-semibold">
+          <div className="text-left">TOTAL</div>
+          <div className="text-right tabular-nums">{formatCurrency(Number(totalCalculado) || 0)}</div>
         </div>
         {header.observacoes ? (
           <div className="text-center mt-1 text-xs text-muted-foreground italic whitespace-pre-wrap">
