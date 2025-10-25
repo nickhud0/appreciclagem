@@ -202,30 +202,30 @@ const PreviewComanda = () => {
         </div>
       </div>
 
-      {/* Recibo simples e estável (largura fixa ~320px) */}
+      {/* Recibo: largura ~220px equivalente a 58mm */}
       <div
         ref={receiptRef}
-        className="mx-auto bg-white text-foreground border border-border/30 rounded-xl w-[320px] max-w-[350px] p-4 mt-4 mb-8 overflow-x-hidden"
+        className="mx-auto bg-white text-foreground border border-border/30 rounded-lg w-[220px] max-w-[240px] px-3.5 py-3.5 mt-4 mb-8 overflow-x-hidden shadow-sm"
         data-scale={scale}
       >
         {/* Cabeçalho do recibo */}
         <div className="text-center">
-          <div className="text-base font-bold tracking-wide">RECICLAGEM PEREQUÊ</div>
-          <div className="text-xs text-muted-foreground mt-1 space-y-0.5">
+          <div className="text-[13px] font-semibold tracking-wide leading-[16px] mb-1.5">RECICLAGEM PEREQUÊ</div>
+          <div className="text-[8.5px] text-muted-foreground space-y-1 leading-[11px]">
             <div>Ubatuba, Perequê Mirim</div>
             <div>Av. Marginal, 2504</div>
             <div>12 99162-0321</div>
             <div>CNPJ/PIX 45.492.161/0001-88</div>
           </div>
         </div>
-        <hr className="my-2 border-border/40" />
+        <hr className="mt-2 mb-2 border-border/40" />
 
         {/* Metadados */}
-        <div className="grid grid-cols-2 gap-y-1 text-sm">
+        <div className="grid grid-cols-2 gap-y-1 text-[9.5px] leading-[12px]">
           <div className="text-muted-foreground">Código</div>
           <div className="text-right font-medium">{header.codigo || '—'}</div>
           <div className="text-muted-foreground">Data/Hora</div>
-          <div className="text-right">{header.comanda_data ? formatDateTime(header.comanda_data) : '—'}</div>
+          <div className="text-right text-[8.5px]">{header.comanda_data ? formatDateTime(header.comanda_data) : '—'}</div>
           <div className="text-muted-foreground">Tipo</div>
           <div className="text-right uppercase font-medium">{header.comanda_tipo || '—'}</div>
         </div>
@@ -234,24 +234,24 @@ const PreviewComanda = () => {
 
         {/* Itens */}
         {groupedItens.length === 0 ? (
-          <div className="text-center text-[13px]">Nenhum item</div>
+          <div className="text-center text-[10px]">Nenhum item</div>
         ) : (
           <div>
             {/* Cabeçalho de colunas (Material | Preço | KG | Total) */}
-            <div className="grid grid-cols-[52%_16%_16%_16%] text-xs font-semibold text-muted-foreground">
+            <div className="grid grid-cols-[52%_16%_16%_16%] text-[9.5px] font-semibold text-muted-foreground leading-[12px] mb-1">
               <div>Material</div>
               <div className="text-right whitespace-nowrap">Preço</div>
               <div className="text-right whitespace-nowrap">KG</div>
               <div className="text-right whitespace-nowrap">Total</div>
             </div>
-            <div className="border-b border-dotted border-border/40 my-1" />
+            <div className="border-b border-border/40 mb-1.5" />
             <div className="divide-y divide-border/30">
               {groupedItens.map((g, idx) => (
-                <div key={idx} className="grid grid-cols-[52%_16%_16%_16%] items-center py-2 text-sm">
-                  <div className="pr-2 truncate whitespace-nowrap">{g.nome}</div>
-                  <div className="text-right tabular-nums whitespace-nowrap">{formatCurrency(g.precoMedio)}</div>
-                  <div className="text-right tabular-nums whitespace-nowrap">{formatNumber(g.kg, 2)}</div>
-                  <div className="text-right tabular-nums whitespace-nowrap font-semibold">{formatCurrency(g.total)}</div>
+                <div key={idx} className="grid grid-cols-[52%_16%_16%_16%] items-center py-1 text-[10px] leading-[13px]">
+                  <div className="pr-1 truncate whitespace-nowrap">{g.nome}</div>
+                  <div className="text-right tabular-nums whitespace-nowrap text-[9.5px]">{formatCurrency(g.precoMedio)}</div>
+                  <div className="text-right tabular-nums whitespace-nowrap text-[9.5px]">{formatNumber(g.kg, 2)}</div>
+                  <div className="text-right tabular-nums whitespace-nowrap text-[9.5px] font-medium">{formatCurrency(g.total)}</div>
                 </div>
               ))}
             </div>
@@ -261,12 +261,12 @@ const PreviewComanda = () => {
         <hr className="my-2 border-border/40" />
 
         {/* Totais */}
-        <div className="grid grid-cols-2 text-base font-semibold">
+        <div className="grid grid-cols-2 text-[11.5px] font-semibold leading-[14px] mt-1.5">
           <div className="text-left">TOTAL</div>
           <div className="text-right tabular-nums">{formatCurrency(Number(totalCalculado) || 0)}</div>
         </div>
         {header.observacoes ? (
-          <div className="text-center mt-1 text-xs text-muted-foreground italic whitespace-pre-wrap">
+          <div className="text-center mt-2 text-[9px] text-muted-foreground whitespace-pre-wrap leading-[11px]">
             {header.observacoes}
           </div>
         ) : null}
@@ -274,7 +274,7 @@ const PreviewComanda = () => {
         <hr className="my-2 border-border/40" />
 
         {/* Rodapé */}
-        <div className="text-center text-sm font-medium mt-4 pb-6">Deus seja louvado</div>
+        <div className="text-center text-[10px] font-semibold mt-3 leading-[12px]">Deus seja louvado</div>
       </div>
 
       {/* === BOTÕES FLUTUANTES FIXOS === */}
