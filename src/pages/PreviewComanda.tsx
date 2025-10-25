@@ -14,6 +14,7 @@ import { Capacitor } from "@capacitor/core";
 import { useToast } from "@/hooks/use-toast";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { generateAndSaveComandaA4Pdf } from "@/services/pdf/generateComandaA4";
 
 type ComandaHeader = {
   comanda_id: number | null;
@@ -201,87 +202,78 @@ const PreviewComanda = () => {
         </div>
       </div>
 
-      {/* Cupom térmico 58mm fiel (largura fixa ~240px) com escala automática */}
-      <div className="w-full flex justify-center items-start px-4 overflow-x-hidden">
-        <div
-          id="comanda-preview"
-          className="bg-white text-black rounded-lg shadow-md mt-4 mb-8"
-          style={{
-            width: '340px',
-            fontFamily: '\u0027Roboto Mono\u0027, monospace',
-            fontSize: '16px',
-            lineHeight: '1.4',
-            overflowY: 'auto',
-            overflowX: 'hidden',
-            maxHeight: '82vh',
-            transform: `scale(${scale})`,
-            transformOrigin: 'top center',
-            paddingLeft: '10px',
-            paddingRight: '10px',
-          }}
-        >
-          <div ref={receiptRef} className="w-auto mx-auto px-3 sm:px-4 overflow-hidden break-words bg-white text-gray-900 p-3 rounded-lg shadow-md font-mono tracking-tight leading-tight">
-          {/* Cabeçalho do cupom */}
-          <div className="text-center text-lg font-bold">Reciclagem Perequê</div>
-          <div className="text-center text-xs leading-tight my-1">
+      {/* Recibo simples e estável (largura fixa ~320px) */}
+      <div
+        ref={receiptRef}
+        className="mx-auto bg-white text-foreground border border-border/30 rounded-xl w-[320px] max-w-[350px] p-4 mt-4 mb-8 overflow-x-hidden"
+        data-scale={scale}
+      >
+        {/* Cabeçalho do recibo */}
+        <div className="text-center">
+          <div className="text-lg font-semibold">Reciclagem Perequê</div>
+          <div className="text-xs text-muted-foreground mt-1 space-y-0.5">
             <div>Ubatuba, Perequê Mirim</div>
             <div>Av. Marginal, 2504</div>
             <div>12 99162-0321</div>
             <div>CNPJ/PIX 45.492.161/0001-88</div>
           </div>
-          <div className="border-b border-gray-400 my-2" />
-          <div className="text-center text-sm">
-            <div className="font-bold text-base">{header.codigo || '—'}</div>
-            <div className="text-sm">{header.comanda_data ? formatDateTime(header.comanda_data) : '—'}</div>
-            <div className="uppercase font-bold text-sm">{header.comanda_tipo || '—'}</div>
-          </div>
+        </div>
+        <hr className="my-2 border-border/40" />
 
-          <div className="border-b border-gray-400 my-2" />
+        {/* Metadados */}
+        <div className="grid grid-cols-2 gap-y-1 text-sm">
+          <div className="text-muted-foreground">Código</div>
+          <div className="text-right font-medium">{header.codigo || '—'}</div>
+          <div className="text-muted-foreground">Data/Hora</div>
+          <div className="text-right">{header.comanda_data ? formatDateTime(header.comanda_data) : '—'}</div>
+          <div className="text-muted-foreground">Tipo</div>
+          <div className="text-right uppercase font-medium">{header.comanda_tipo || '—'}</div>
+        </div>
 
-          {/* Itens */}
-          {groupedItens.length === 0 ? (
-            <div className="text-center text-[13px]">Nenhum item</div>
-          ) : (
-            <div>
-              {/* Cabeçalho de colunas */}
-              <div className="grid grid-cols-[40%_15%_22%_23%] gap-0.5 text-xs md:text-sm font-semibold text-gray-700">
-                <div>Material</div>
-                <div className="text-right whitespace-nowrap">Kg</div>
-                <div className="text-right whitespace-nowrap">Preço</div>
-                <div className="text-right whitespace-nowrap">Total</div>
-              </div>
-              <div className="border-b border-dotted border-gray-300 my-1" />
-              {/* Linhas de itens (uma linha por material) */}
+        <hr className="my-2 border-border/40" />
+
+        {/* Itens */}
+        {groupedItens.length === 0 ? (
+          <div className="text-center text-[13px]">Nenhum item</div>
+        ) : (
+          <div>
+            {/* Cabeçalho de colunas */}
+            <div className="grid grid-cols-[55%_15%_15%_15%] text-xs font-semibold text-muted-foreground">
+              <div>Material</div>
+              <div className="text-right whitespace-nowrap">Kg</div>
+              <div className="text-right whitespace-nowrap">Preço</div>
+              <div className="text-right whitespace-nowrap">Total</div>
+            </div>
+            <div className="border-b border-dotted border-border/40 my-1" />
+            <div className="divide-y divide-border/30">
               {groupedItens.map((g, idx) => (
-                <div key={idx} className="grid grid-cols-[40%_15%_22%_23%] gap-0.5 items-center text-sm md:text-base py-2">
-                  <div className="pr-0.5 break-words whitespace-normal leading-normal">{g.nome}</div>
+                <div key={idx} className="grid grid-cols-[55%_15%_15%_15%] items-center py-2 text-sm">
+                  <div className="pr-2 truncate whitespace-nowrap">{g.nome}</div>
                   <div className="text-right tabular-nums whitespace-nowrap">{formatNumber(g.kg, 2)}</div>
-                  <div className="text-right tabular-nums font-semibold whitespace-nowrap">{formatCurrency(g.precoMedio)}</div>
-                  <div className="text-right tabular-nums font-semibold whitespace-nowrap">{formatCurrency(g.total)}</div>
-                  <div className="col-span-4 border-b border-dotted border-gray-300 my-1" />
+                  <div className="text-right tabular-nums whitespace-nowrap">{formatCurrency(g.precoMedio)}</div>
+                  <div className="text-right tabular-nums whitespace-nowrap font-semibold">{formatCurrency(g.total)}</div>
                 </div>
               ))}
             </div>
-          )}
-
-          <div className="border-t border-gray-400 my-2" />
-
-          {/* Totais */}
-          <div className="text-center text-base md:text-lg font-semibold text-black">
-            TOTAL: {formatCurrency(Number(totalCalculado) || 0)}
           </div>
-          {header.observacoes ? (
-            <div className="text-center mt-1 text-xs md:text-sm text-gray-600 italic whitespace-pre-wrap">
-              {header.observacoes}
-            </div>
-          ) : null}
+        )}
 
-          <div className="border-t border-gray-400 my-2" />
+        <hr className="my-2 border-border/40" />
 
-          {/* Rodapé do cupom */}
-          <div className="text-base font-semibold text-center mt-4 pb-6">Deus seja louvado</div>
-          </div>
+        {/* Totais */}
+        <div className="text-center text-base font-semibold">
+          TOTAL: {formatCurrency(Number(totalCalculado) || 0)}
         </div>
+        {header.observacoes ? (
+          <div className="text-center mt-1 text-xs text-muted-foreground italic whitespace-pre-wrap">
+            {header.observacoes}
+          </div>
+        ) : null}
+
+        <hr className="my-2 border-border/40" />
+
+        {/* Rodapé */}
+        <div className="text-center text-sm font-medium mt-4 pb-6">Deus seja louvado</div>
       </div>
 
       {/* === BOTÕES FLUTUANTES FIXOS === */}
@@ -295,89 +287,41 @@ const PreviewComanda = () => {
           </button>
           <button className="flex-1 py-3 rounded-lg bg-blue-600 text-white font-semibold text-base shadow-sm active:scale-95" onClick={async () => {
             try {
-              const node = receiptRef.current;
-              if (!node) throw new Error("Pré-visualização da comanda não encontrada");
-
-              // Capturar conteúdo com nitidez
-              const canvas = await html2canvas(node, { scale: 2, backgroundColor: "#FFFFFF" });
-              const imgData = canvas.toDataURL("image/png", 1.0);
-
-              // PDF térmico 58mm, com 2mm de margem, altura proporcional
-              const paperWidthMm = 58;
-              const marginMm = 2;
-              const contentWidthMm = Math.max(1, paperWidthMm - marginMm * 2);
-              const imgHeightMm = (canvas.height / canvas.width) * contentWidthMm;
-              const pageHeightMm = Math.max(1, imgHeightMm + marginMm * 2);
-
-              const pdf = new jsPDF({ unit: "mm", format: [paperWidthMm, pageHeightMm], orientation: "portrait" });
-              pdf.addImage(imgData, "PNG", marginMm, marginMm, contentWidthMm, imgHeightMm);
-
-              // Converter para base64 via Blob + FileReader (mais confiável no Android)
-              const blob = pdf.output("blob");
-              const base64Data: string = await new Promise((resolve, reject) => {
-                try {
-                  const reader = new FileReader();
-                  reader.onloadend = () => {
-                    try {
-                      const result = String(reader.result || "");
-                      const idx = result.indexOf(",");
-                      resolve(idx >= 0 ? result.slice(idx + 1) : result);
-                    } catch (e) { reject(e); }
-                  };
-                  reader.onerror = (e) => reject(e);
-                  reader.readAsDataURL(blob);
-                } catch (e) {
-                  reject(e);
-                }
+              console.log('[PreviewComanda] Iniciando geração de PDF...');
+              toast({ description: "Gerando PDF..." as any });
+              
+              const result = await generateAndSaveComandaA4Pdf({
+                header: {
+                  codigo: header?.codigo ?? null,
+                  comanda_data: header?.comanda_data ?? null,
+                  comanda_tipo: header?.comanda_tipo ?? null,
+                  observacoes: header?.observacoes ?? null,
+                },
+                groupedItens,
+                total: Number(totalCalculado) || 0,
               });
-
-              // Nome do arquivo
-              const codigoRaw = (header?.codigo && String(header.codigo).trim()) || "comanda";
-              const codigo = codigoRaw.replace(/[^A-Za-z0-9._-]/g, "_");
-              const filename = `${codigo}.pdf`;
-
-              // Permissões (Android) — solicitar se necessário
-              try {
-                const status = await Filesystem.checkPermissions();
-                const state = (status as any)?.publicStorage || (status as any)?.state;
-                if (state && String(state).toLowerCase() !== "granted") {
-                  await Filesystem.requestPermissions();
-                }
-              } catch {}
-
-              // Salvar automaticamente em Downloads; fallback para Documents
-              let saved = false;
-              try {
-                await Filesystem.writeFile({
-                  path: filename,
-                  data: base64Data,
-                  directory: Directory.Downloads,
-                  recursive: true,
-                  encoding: 'base64' as any,
-                  mimeType: 'application/pdf' as any,
+              
+              console.log('[PreviewComanda] PDF gerado com sucesso:', result);
+              
+              if (result?.usedDirectoryName === 'Downloads') {
+                toast({ 
+                  description: `PDF "${result.filename}" salvo em Downloads ✓` as any,
+                  duration: 5000
                 });
-                saved = true;
-              } catch {
-                try {
-                  await Filesystem.writeFile({
-                    path: filename,
-                    data: base64Data,
-                    directory: Directory.Documents,
-                    recursive: true,
-                    encoding: 'base64' as any,
-                    mimeType: 'application/pdf' as any,
-                  });
-                  saved = true;
-                } catch (err2) {
-                  throw err2;
-                }
-              }
-
-              if (saved) {
-                toast({ description: "PDF salvo com sucesso" as any });
+              } else {
+                toast({ 
+                  description: `PDF "${result.filename}" salvo com sucesso ✓` as any,
+                  duration: 5000
+                });
               }
             } catch (err) {
-              toast({ description: "Falha ao salvar o PDF. Tente novamente.", variant: "destructive" as any });
+              console.error('[PreviewComanda] Erro ao gerar PDF:', err);
+              const errorMsg = err instanceof Error ? err.message : String(err);
+              toast({ 
+                description: `Erro: ${errorMsg}. Verifique as permissões.` as any, 
+                variant: "destructive" as any,
+                duration: 7000
+              });
             }
           }}>
             PDF

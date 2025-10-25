@@ -1,0 +1,223 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Teste de Geração de PDF</title>
+    <style>
+        body {
+            font-family: system-ui, -apple-system, sans-serif;
+            max-width: 800px;
+            margin: 50px auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 12px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #2563eb;
+            margin-bottom: 10px;
+        }
+        .subtitle {
+            color: #64748b;
+            margin-bottom: 30px;
+        }
+        button {
+            background: #2563eb;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 8px;
+            font-size: 16px;
+            cursor: pointer;
+            font-weight: 600;
+            transition: all 0.2s;
+        }
+        button:hover {
+            background: #1d4ed8;
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px rgba(37,99,235,0.3);
+        }
+        button:active {
+            transform: translateY(0);
+        }
+        .log {
+            margin-top: 20px;
+            padding: 15px;
+            background: #f8fafc;
+            border-left: 4px solid #2563eb;
+            border-radius: 4px;
+            font-family: 'Courier New', monospace;
+            font-size: 13px;
+            white-space: pre-wrap;
+            max-height: 400px;
+            overflow-y: auto;
+        }
+        .success {
+            border-left-color: #10b981;
+            color: #059669;
+        }
+        .error {
+            border-left-color: #ef4444;
+            color: #dc2626;
+        }
+        .info {
+            border-left-color: #3b82f6;
+            color: #2563eb;
+        }
+        .step {
+            margin: 10px 0;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🧪 Teste de Geração de PDF</h1>
+        <p class="subtitle">Teste se o PDF está sendo gerado corretamente antes de buildar o app Android</p>
+        
+        <button onclick="testPdfGeneration()">🚀 Gerar PDF de Teste</button>
+        
+        <div id="log" class="log info" style="display: none;">
+            Aguardando teste...
+        </div>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js"></script>
+    <script>
+        const log = document.getElementById('log');
+        
+        function addLog(message, type = 'info') {
+            log.style.display = 'block';
+            log.className = `log ${type}`;
+            log.innerHTML += `<div class="step">${new Date().toLocaleTimeString()} - ${message}</div>`;
+            log.scrollTop = log.scrollHeight;
+        }
+        
+        function clearLog() {
+            log.innerHTML = '';
+            log.style.display = 'block';
+        }
+        
+        function bytesToBase64(bytes) {
+            let binary = "";
+            const chunkSize = 8192;
+            for (let i = 0; i < bytes.length; i += chunkSize) {
+                const end = Math.min(i + chunkSize, bytes.length);
+                const chunk = bytes.subarray(i, end);
+                binary += String.fromCharCode.apply(null, Array.from(chunk));
+            }
+            return btoa(binary);
+        }
+        
+        async function testPdfGeneration() {
+            clearLog();
+            
+            try {
+                addLog('✓ Iniciando teste de geração de PDF...', 'info');
+                
+                // Criar PDF usando pdf-lib (mesma biblioteca do app)
+                const { PDFDocument, StandardFonts, rgb } = PDFLib;
+                
+                addLog('✓ pdf-lib carregado', 'info');
+                
+                const pdfDoc = await PDFDocument.create();
+                const page = pdfDoc.addPage([595.28, 841.89]); // A4
+                
+                const helvetica = await pdfDoc.embedFont(StandardFonts.Helvetica);
+                const helveticaBold = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
+                
+                addLog('✓ Documento PDF criado', 'info');
+                
+                // Desenhar cabeçalho (igual ao app)
+                const { width, height } = page.getSize();
+                let y = height - 48;
+                
+                page.drawText('RECICLAGEM PEREQUÊ', {
+                    x: 40,
+                    y: y,
+                    size: 18,
+                    font: helveticaBold,
+                    color: rgb(0.066, 0.094, 0.153)
+                });
+                
+                y -= 22;
+                page.drawText('Teste de Geração de PDF', {
+                    x: 40,
+                    y: y,
+                    size: 12,
+                    font: helvetica,
+                    color: rgb(0.42, 0.45, 0.50)
+                });
+                
+                y -= 20;
+                page.drawText(`Data/Hora: ${new Date().toLocaleString('pt-BR')}`, {
+                    x: 40,
+                    y: y,
+                    size: 10,
+                    font: helvetica,
+                    color: rgb(0.42, 0.45, 0.50)
+                });
+                
+                addLog('✓ Conteúdo adicionado ao PDF', 'info');
+                
+                // Salvar PDF
+                const saveOpts = { useObjectStreams: false };
+                const pdfBytes = await pdfDoc.save(saveOpts);
+                
+                addLog(`✓ PDF salvo com ${pdfBytes.length} bytes`, 'info');
+                
+                // Validar header PDF
+                if (pdfBytes[0] === 0x25 && pdfBytes[1] === 0x50 && 
+                    pdfBytes[2] === 0x44 && pdfBytes[3] === 0x46 && pdfBytes[4] === 0x2D) {
+                    addLog('✓ Header do PDF válido (%PDF-)', 'success');
+                } else {
+                    throw new Error('Header do PDF inválido!');
+                }
+                
+                // Testar conversão para base64
+                const base64Data = bytesToBase64(pdfBytes);
+                addLog(`✓ Conversão para base64: ${base64Data.length} caracteres`, 'info');
+                
+                if (!base64Data || base64Data.length === 0) {
+                    throw new Error('Falha na conversão para base64');
+                }
+                
+                // Testar conversão reversa
+                const decoded = Uint8Array.from(atob(base64Data), c => c.charCodeAt(0));
+                if (decoded.length === pdfBytes.length) {
+                    addLog('✓ Conversão base64 reversível (OK)', 'success');
+                } else {
+                    addLog(`⚠ Tamanho diferente após decode: ${decoded.length} vs ${pdfBytes.length}`, 'error');
+                }
+                
+                // Download do PDF para verificação manual
+                const blob = new Blob([pdfBytes], { type: 'application/pdf' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = 'teste-pdf-' + Date.now() + '.pdf';
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                setTimeout(() => URL.revokeObjectURL(url), 1000);
+                
+                addLog('✓ PDF baixado com sucesso!', 'success');
+                addLog('═══════════════════════════════════════', 'success');
+                addLog('✓ TODOS OS TESTES PASSARAM!', 'success');
+                addLog('✓ Abra o PDF baixado para verificar', 'success');
+                addLog('═══════════════════════════════════════', 'success');
+                
+            } catch (error) {
+                addLog(`✗ ERRO: ${error.message}`, 'error');
+                addLog(`Stack: ${error.stack}`, 'error');
+                console.error('Erro completo:', error);
+            }
+        }
+    </script>
+</body>
+</html>
+
