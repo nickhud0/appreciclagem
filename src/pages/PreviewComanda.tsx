@@ -3,8 +3,9 @@ import { useEffect, useMemo, useRef, useState, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Separator } from "@/components/ui/separator";
 import { executeQuery } from "@/database";
-import { formatCurrency, formatDateTime, formatNumber } from "@/utils/formatters";
+import { formatCurrency, formatDateTime, formatNumber, formatDate } from "@/utils/formatters";
 import { Dialog, DialogClose, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import html2canvas from "html2canvas";
 import jsPDF from "jspdf";
@@ -47,6 +48,15 @@ const PreviewComanda = () => {
   const receiptRef = useRef<HTMLDivElement | null>(null);
   const headerRef = useRef<HTMLDivElement | null>(null);
   const actionsRef = useRef<HTMLDivElement | null>(null);
+
+  // Função para formatar apenas o horário
+  const formatTime = (date: Date | string): string => {
+    const dateObj = typeof date === 'string' ? new Date(date) : date;
+    return new Intl.DateTimeFormat("pt-BR", {
+      hour: "2-digit",
+      minute: "2-digit"
+    }).format(dateObj);
+  };
 
   useEffect(() => {
     async function loadLatestComanda() {
@@ -121,7 +131,7 @@ const PreviewComanda = () => {
       const key = (it.material_id != null && !Number.isNaN(Number(it.material_id)))
         ? String(it.material_id)
         : (it.material_nome || '—');
-      const nome = it.material_nome || `#${it.material_id ?? ''}`;
+      const nome = it.material_nome || `Material #${it.material_id ?? ''}`;
       const kg = Number(it.kg_total || 0) || 0;
       const preco = Number(it.preco_kg || 0) || 0;
       const subtotal = Number(it.item_valor_total || (kg * preco)) || 0;
@@ -202,80 +212,83 @@ const PreviewComanda = () => {
         </div>
       </div>
 
-      {/* Recibo: largura ~220px equivalente a 58mm */}
-      <div
+      {/* Comanda com novo layout */}
+      <Card 
         ref={receiptRef}
-        className="mx-auto bg-white text-foreground border border-border/30 rounded-lg w-[220px] max-w-[240px] px-3.5 py-3.5 mt-4 mb-8 overflow-x-hidden shadow-sm"
+        className="mb-6 p-6 bg-white text-black max-w-sm mx-auto" 
+        style={{ fontFamily: 'monospace' }}
         data-scale={scale}
       >
-        {/* Cabeçalho do recibo */}
-        <div className="text-center">
-          <div className="text-[13px] font-semibold tracking-wide leading-[16px] mb-1.5">RECICLAGEM PEREQUÊ</div>
-          <div className="text-[8.5px] text-muted-foreground space-y-1 leading-[11px]">
-            <div>Ubatuba, Perequê Mirim</div>
-            <div>Av. Marginal, 2504</div>
-            <div>12 99162-0321</div>
-            <div>CNPJ/PIX 45.492.161/0001-88</div>
+        {/* Cabeçalho */}
+        <div className="text-center mb-4">
+          <h2 className="text-lg font-bold">Reciclagem Pereque</h2>
+          <p className="text-sm">Ubatuba, Pereque Mirim, Av Marginal, 2504</p>
+          <p className="text-sm">12 99162-0321</p>
+          <p className="text-sm">CNPJ/PIX - 45.492.161/0001-88</p>
+        </div>
+
+        <Separator className="my-4 border-dashed border-black" />
+
+        {/* Dados da Comanda */}
+        <div className="space-y-1 text-sm mb-4">
+          <div className="flex justify-between">
+            <span>Comanda:</span>
+            <span className="font-bold">{header.codigo || '—'}</span>
+          </div>
+          <div className="flex justify-between">
+            <span>Data:</span>
+            <span>{header.comanda_data ? formatDate(header.comanda_data) : '—'}</span>
+          </div>
+          <div className="flex justify-between">
+            <span>Horário:</span>
+            <span>{header.comanda_data ? formatTime(header.comanda_data) : '—'}</span>
+          </div>
+          <div className="flex justify-between">
+            <span>Tipo:</span>
+            <span className="uppercase">{header.comanda_tipo || '—'}</span>
           </div>
         </div>
-        <hr className="mt-2 mb-2 border-border/40" />
 
-        {/* Metadados */}
-        <div className="grid grid-cols-2 gap-y-1 text-[9.5px] leading-[12px]">
-          <div className="text-muted-foreground">Código</div>
-          <div className="text-right font-medium">{header.codigo || '—'}</div>
-          <div className="text-muted-foreground">Data/Hora</div>
-          <div className="text-right text-[8.5px]">{header.comanda_data ? formatDateTime(header.comanda_data) : '—'}</div>
-          <div className="text-muted-foreground">Tipo</div>
-          <div className="text-right uppercase font-medium">{header.comanda_tipo || '—'}</div>
-        </div>
-
-        <hr className="my-2 border-border/40" />
+        <Separator className="my-4 border-dashed border-black" />
 
         {/* Itens */}
-        {groupedItens.length === 0 ? (
-          <div className="text-center text-[10px]">Nenhum item</div>
-        ) : (
-          <div>
-            {/* Cabeçalho de colunas (Material | Preço | KG | Total) */}
-            <div className="grid grid-cols-[52%_16%_16%_16%] text-[9.5px] font-semibold text-muted-foreground leading-[12px] mb-1">
-              <div>Material</div>
-              <div className="text-right whitespace-nowrap">Preço</div>
-              <div className="text-right whitespace-nowrap">KG</div>
-              <div className="text-right whitespace-nowrap">Total</div>
-            </div>
-            <div className="border-b border-border/40 mb-1.5" />
-            <div className="divide-y divide-border/30">
-              {groupedItens.map((g, idx) => (
-                <div key={idx} className="grid grid-cols-[52%_16%_16%_16%] items-center py-1 text-[10px] leading-[13px]">
-                  <div className="pr-1 truncate whitespace-nowrap">{g.nome}</div>
-                  <div className="text-right tabular-nums whitespace-nowrap text-[9.5px]">{formatCurrency(g.precoMedio)}</div>
-                  <div className="text-right tabular-nums whitespace-nowrap text-[9.5px]">{formatNumber(g.kg, 2)}</div>
-                  <div className="text-right tabular-nums whitespace-nowrap text-[9.5px] font-medium">{formatCurrency(g.total)}</div>
+        <div className="space-y-2 mb-4">
+          {groupedItens.length === 0 ? (
+            <div className="text-sm text-center">Nenhum item</div>
+          ) : (
+            groupedItens.map((item, index) => (
+              <div key={index} className="text-sm">
+                <div className="flex justify-between">
+                  <span>{item.nome}</span>
                 </div>
-              ))}
-            </div>
-          </div>
-        )}
-
-        <hr className="my-2 border-border/40" />
-
-        {/* Totais */}
-        <div className="grid grid-cols-2 text-[11.5px] font-semibold leading-[14px] mt-1.5">
-          <div className="text-left">TOTAL</div>
-          <div className="text-right tabular-nums">{formatCurrency(Number(totalCalculado) || 0)}</div>
+                <div className="flex justify-between ml-2">
+                  <span>{formatNumber(item.kg, 2)}x R$ {item.precoMedio.toFixed(2)}</span>
+                  <span className="font-bold">R$ {item.total.toFixed(2)}</span>
+                </div>
+              </div>
+            ))
+          )}
         </div>
-        {header.observacoes ? (
-          <div className="text-center mt-2 text-[9px] text-muted-foreground whitespace-pre-wrap leading-[11px]">
-            {header.observacoes}
-          </div>
-        ) : null}
 
-        <hr className="my-2 border-border/40" />
+        <Separator className="my-4 border-dashed border-black" />
+
+        {/* Total */}
+        <div className="space-y-1 text-sm">
+          <div className="flex justify-between font-bold text-base">
+            <span>TOTAL:</span>
+            <span>R$ {Number(totalCalculado).toFixed(2)}</span>
+          </div>
+        </div>
+
+        <Separator className="my-4 border-dashed border-black" />
 
         {/* Rodapé */}
-        <div className="text-center text-[10px] font-semibold mt-3 leading-[12px]">Deus seja louvado</div>
-      </div>
+        <div className="text-center text-xs">
+          <p>Obrigado</p>
+          <p className="font-bold">DEUS SEJA LOUVADO!!!</p>
+          <p className="mt-2">Versao 1.0</p>
+        </div>
+      </Card>
 
       {/* === BOTÕES FLUTUANTES FIXOS === */}
       <div className="fixed bottom-4 left-0 w-full flex justify-center z-50">

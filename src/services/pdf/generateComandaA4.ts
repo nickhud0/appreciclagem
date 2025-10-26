@@ -62,9 +62,9 @@ export async function generateAndSaveComandaA4Pdf({ header, groupedItens, total 
   const fonts = {
     title: { size: 13, font: helveticaBold, lh: 16 },
     sub: { size: 8.5, font: helvetica, lh: 11 },
-    meta: { size: 9.5, font: helvetica, lh: 12 },
-    tableHeader: { size: 9.5, font: helveticaBold, lh: 12 },
-    tableBody: { size: 10, font: helvetica, lh: 13 },
+    meta: { size: 9.2, font: helvetica, lh: 12 },
+    tableHeader: { size: 9, font: helveticaBold, lh: 11 },
+    tableBody: { size: 9.2, font: helvetica, lh: 12 },
     total: { size: 11.5, font: helveticaBold, lh: 14 },
     obs: { size: 9, font: helvetica, lh: 11 },
     footer: { size: 10, font: helveticaBold, lh: 12 },
@@ -91,6 +91,19 @@ export async function generateAndSaveComandaA4Pdf({ header, groupedItens, total 
       else high = mid;
     }
     return text.slice(0, Math.max(0, low - 1)) + "…";
+  };
+
+  // Helper: fit font size down to min to fit width
+  const fitSize = (text: string, maxW: number, font: any, size: number, min: number): number => {
+    let s = size;
+    while (s > min && font.widthOfTextAtSize(text, s) > maxW) s -= 0.2;
+    return Math.max(min, s);
+  };
+
+  // Compact currency (no symbol)
+  const formatCurrencyNoSymbol = (value: number): string => {
+    const full = formatCurrency(value || 0);
+    return String(full).replace(/[^\d.,-]/g, "");
   };
 
   // Helper: wrap text into lines
@@ -129,7 +142,7 @@ export async function generateAndSaveComandaA4Pdf({ header, groupedItens, total 
     h += fonts.tableHeader.lh + spacing.xs;
     h += 1 + spacing.sm; // divider + gap
     
-    // Table rows
+    // Rows (single line per item + divider)
     for (const _ of groupedItens) {
       h += fonts.tableBody.lh + spacing.xs;
       h += 0.5 + spacing.xs; // row divider + gap
@@ -206,45 +219,76 @@ export async function generateAndSaveComandaA4Pdf({ header, groupedItens, total 
   move(fonts.sub.lh + spacing.md);
 
   // Metadata
-  const codigoTxt = `Código: ${codigo}`;
-  const dataTxt = `Data/Hora: ${header?.comanda_data ? formatDateTime(header.comanda_data) : '—'}`;
-  draw(codigoTxt, fonts.meta, 'left');
-  draw(dataTxt, fonts.meta, 'right');
+  const dateTxt = `Data/Hora: ${header?.comanda_data ? formatDateTime(header.comanda_data) : '—'}`;
+  const dateW = fonts.meta.font.widthOfTextAtSize(dateTxt, fonts.meta.size);
+  const leftMaxForCode = Math.max(0, availableWidth - dateW - 8);
+  const codeFull = `Código: ${codigo}`;
+  const codeTxt = truncate(codeFull, leftMaxForCode, fonts.meta.font, fonts.meta.size);
+  draw(codeTxt, fonts.meta, 'left');
+  draw(dateTxt, fonts.meta, 'right');
   move(fonts.meta.lh + spacing.xs);
   
   const tipoTxt = `Tipo: ${String(header?.comanda_tipo || '—').toUpperCase()}`;
   draw(tipoTxt, fonts.meta, 'left');
   move(fonts.meta.lh + spacing.md);
 
-  // Table header
-  const col1 = marginPt;
-  const col2 = marginPt + availableWidth * 0.52;
-  const col3 = marginPt + availableWidth * 0.68;
-  const col4 = marginPt + availableWidth * 0.84;
-  
-  page.drawText("Material", { x: col1, y, size: fonts.tableHeader.size, font: fonts.tableHeader.font, color: rgb(0.18, 0.20, 0.26) });
-  page.drawText("Preço", { x: col2, y, size: fonts.tableHeader.size, font: fonts.tableHeader.font, color: rgb(0.18, 0.20, 0.26) });
-  page.drawText("KG", { x: col3, y, size: fonts.tableHeader.size, font: fonts.tableHeader.font, color: rgb(0.18, 0.20, 0.26) });
-  page.drawText("Total", { x: col4, y, size: fonts.tableHeader.size, font: fonts.tableHeader.font, color: rgb(0.18, 0.20, 0.26) });
+  // Section header
+  drawMuted("ITENS", fonts.tableHeader, 'left');
   move(fonts.tableHeader.lh + spacing.xs);
   
+  // Column layout (percentages tuned to fit values): 50 | 18 | 14 | 18
+  const colW1 = Math.max(50, availableWidth * 0.50);
+  const colW2 = Math.max(22, availableWidth * 0.18);
+  const colW3 = Math.max(20, availableWidth * 0.14);
+  const colW4 = Math.max(22, availableWidth - (colW1 + colW2 + colW3));
+  const colX1 = marginPt;
+  const colX2 = colX1 + colW1;
+  const colX3 = colX2 + colW2;
+  const colX4 = colX3 + colW3;
+
+  // Table header
+  page.drawText("Material", { x: colX1, y, size: fonts.tableHeader.size, font: fonts.tableHeader.font, color: rgb(0.18, 0.20, 0.26) });
+  const precoH = "Preço"; const precoHW = fonts.tableHeader.font.widthOfTextAtSize(precoH, fonts.tableHeader.size);
+  page.drawText(precoH, { x: colX2 + (colW2 - precoHW) / 2, y, size: fonts.tableHeader.size, font: fonts.tableHeader.font, color: rgb(0.18, 0.20, 0.26) });
+  const kgH = "KG"; const kgHW = fonts.tableHeader.font.widthOfTextAtSize(kgH, fonts.tableHeader.size);
+  page.drawText(kgH, { x: colX3 + (colW3 - kgHW) / 2, y, size: fonts.tableHeader.size, font: fonts.tableHeader.font, color: rgb(0.18, 0.20, 0.26) });
+  const totalH = "Total"; const totalHW = fonts.tableHeader.font.widthOfTextAtSize(totalH, fonts.tableHeader.size);
+  page.drawText(totalH, { x: colX4 + colW4 - totalHW, y, size: fonts.tableHeader.size, font: fonts.tableHeader.font, color: rgb(0.18, 0.20, 0.26) });
+  move(fonts.tableHeader.lh + spacing.xs);
+
   // Divider
   page.drawRectangle({ x: marginPt, y: y - 0.5, width: availableWidth, height: 0.7, color: rgb(0.88, 0.90, 0.94) });
   move(spacing.sm);
 
-  // Table rows
+  // Rows (single line)
   for (const item of groupedItens) {
-    const nome = truncate(String(item.nome || ''), col2 - col1 - 2, fonts.tableBody.font, fonts.tableBody.size);
-    const preco = formatCurrency(Number(item.precoMedio || 0));
-    const kg = formatNumber(Number(item.kg || 0), 2);
-    const totalVal = formatCurrency(Number(item.total || 0));
-    
-    page.drawText(nome, { x: col1, y, size: fonts.tableBody.size, font: fonts.tableBody.font, color: rgb(0.1, 0.1, 0.15) });
-    page.drawText(preco, { x: col2, y, size: fonts.tableBody.size, font: fonts.tableBody.font, color: rgb(0.1, 0.1, 0.15) });
-    page.drawText(kg, { x: col3, y, size: fonts.tableBody.size, font: fonts.tableBody.font, color: rgb(0.1, 0.1, 0.15) });
-    page.drawText(totalVal, { x: col4, y, size: fonts.tableBody.size, font: fonts.tableBody.font, color: rgb(0.1, 0.1, 0.15) });
+    const nome = truncate(String(item.nome || ''), colW1 - 2, fonts.tableBody.font, fonts.tableBody.size);
+    const precoTxt = formatCurrencyNoSymbol(Number(item.precoMedio || 0));
+    const kgTxt = formatNumber(Number(item.kg || 0), 2);
+    const totalTxt = formatCurrency(Number(item.total || 0));
+
+    // Fit numeric sizes if needed
+    const precoSize = fitSize(precoTxt, colW2 - 1, fonts.tableBody.font, fonts.tableBody.size, 8.4);
+    const kgSize = fitSize(kgTxt, colW3 - 1, fonts.tableBody.font, fonts.tableBody.size, 8.4);
+    const totalSize = fitSize(totalTxt, colW4 - 1, helveticaBold, fonts.tableBody.size, 8.4);
+
+    // Draw material
+    page.drawText(nome, { x: colX1, y, size: fonts.tableBody.size, font: fonts.tableBody.font, color: rgb(0.1, 0.1, 0.15) });
+
+    // Draw price centered in its column
+    const precoW = fonts.tableBody.font.widthOfTextAtSize(precoTxt, precoSize);
+    page.drawText(precoTxt, { x: colX2 + (colW2 - precoW) / 2, y, size: precoSize, font: fonts.tableBody.font, color: rgb(0.1, 0.1, 0.15) });
+
+    // Draw KG centered
+    const kgW = fonts.tableBody.font.widthOfTextAtSize(kgTxt, kgSize);
+    page.drawText(kgTxt, { x: colX3 + (colW3 - kgW) / 2, y, size: kgSize, font: fonts.tableBody.font, color: rgb(0.1, 0.1, 0.15) });
+
+    // Draw total right-aligned
+    const totalW2 = helveticaBold.widthOfTextAtSize(totalTxt, totalSize);
+    page.drawText(totalTxt, { x: colX4 + colW4 - totalW2, y, size: totalSize, font: helveticaBold, color: rgb(0.1, 0.1, 0.15) });
+
     move(fonts.tableBody.lh + spacing.xs);
-    
+
     // Row divider
     page.drawRectangle({ x: marginPt, y: y - 0.25, width: availableWidth, height: 0.5, color: rgb(0.92, 0.93, 0.95) });
     move(spacing.xs);
