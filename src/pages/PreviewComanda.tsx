@@ -467,7 +467,7 @@ const PreviewComanda = () => {
 
         {/* Itens */}
         <div className="space-y-2 mb-4">
-          {groupedItens.length === 0 ? (
+        {groupedItens.length === 0 ? (
             <div className="text-sm text-center">Nenhum item</div>
           ) : (
             groupedItens.map((item, index) => (
@@ -478,8 +478,8 @@ const PreviewComanda = () => {
                 <div className="flex justify-between ml-2">
                   <span>{formatNumber(item.kg, 2)}x R$ {item.precoMedio.toFixed(2)}</span>
                   <span className="font-bold">R$ {item.total.toFixed(2)}</span>
-                </div>
-              </div>
+            </div>
+          </div>
             ))
           )}
         </div>
@@ -501,7 +501,7 @@ const PreviewComanda = () => {
           <p>Obrigado</p>
           <p className="font-bold">DEUS SEJA LOUVADO!!!</p>
           <p className="mt-2">Versao 1.0</p>
-        </div>
+      </div>
       </Card>
 
       {/* === BOTÕES FLUTUANTES FIXOS === */}
@@ -603,47 +603,55 @@ const PreviewComanda = () => {
                 }
                 setIsLoading(true);
 
-                const isWeb = Capacitor.getPlatform() === "web";
-                const codigo = (header?.codigo || "comanda").toString();
-                const waUrl = `https://wa.me/+55${sanitized}`;
-
-                if (isWeb) {
-                  await Browser.open({ url: waUrl });
-                  setIsWhatsAppModalOpen(false);
-                  return;
+                // PRIMEIRO: Gerar e salvar o PDF usando a mesma função do botão PDF
+                console.log('[WhatsApp] Iniciando geração de PDF...');
+                toast({ description: "Gerando PDF..." as any });
+                
+                const pdfResult = await generateAndSaveComandaA4Pdf({
+                  header: {
+                    codigo: header?.codigo ?? null,
+                    comanda_data: header?.comanda_data ?? null,
+                    comanda_tipo: header?.comanda_tipo ?? null,
+                    observacoes: header?.observacoes ?? null,
+                  },
+                  groupedItens,
+                  total: Number(totalCalculado) || 0,
+                });
+                
+                console.log('[WhatsApp] PDF gerado com sucesso:', pdfResult);
+                
+                if (pdfResult?.usedDirectoryName === 'Downloads') {
+                  toast({ 
+                    description: `PDF "${pdfResult.filename}" salvo em Downloads ✓` as any,
+                    duration: 3000
+                  });
+                } else {
+                  toast({ 
+                    description: `PDF "${pdfResult.filename}" salvo com sucesso ✓` as any,
+                    duration: 3000
+                  });
                 }
 
-                const node = receiptRef.current;
-                if (!node) throw new Error("Pré-visualização da comanda não encontrada");
-
-                const canvas = await html2canvas(node, { scale: 2, backgroundColor: "#ffffff" });
-                const imgData = canvas.toDataURL("image/png", 1.0);
-
-                const paperWidthMm = 58;
-                const marginMm = 2;
-                const contentWidthMm = Math.max(1, paperWidthMm - marginMm * 2);
-                const imgHeightMm = (canvas.height / canvas.width) * contentWidthMm;
-                const pageHeightMm = Math.max(1, imgHeightMm + marginMm * 2);
-
-                const pdf = new jsPDF({ unit: "mm", format: [paperWidthMm, pageHeightMm], orientation: "portrait" });
-                pdf.addImage(imgData, "PNG", marginMm, marginMm, contentWidthMm, imgHeightMm);
-
-                const blob = pdf.output("blob");
-                const arrayBuffer = await blob.arrayBuffer();
-                const base64Data = btoa(String.fromCharCode(...new Uint8Array(arrayBuffer)));
-
-                const filename = `${codigo}-${sanitized}.pdf`;
-                await Filesystem.writeFile({
-                  path: filename,
-                  data: base64Data,
-                  directory: Directory.Downloads,
-                  recursive: true,
-                });
-
+                // SEGUNDO: Abrir o WhatsApp com o número formatado
+                const waUrl = `https://wa.me/+55${sanitized}`;
+                console.log('[WhatsApp] Abrindo WhatsApp com URL:', waUrl);
+                
                 await Browser.open({ url: waUrl });
                 setIsWhatsAppModalOpen(false);
+                
+                toast({ 
+                  description: "WhatsApp aberto com sucesso! PDF já foi salvo." as any,
+                  duration: 3000
+                });
+
               } catch (err) {
-                toast({ description: "Falha ao preparar ou abrir o WhatsApp. Verifique o número e tente novamente.", variant: "destructive" as any });
+                console.error('[WhatsApp] Erro:', err);
+                const errorMsg = err instanceof Error ? err.message : String(err);
+                toast({ 
+                  description: `Erro: ${errorMsg}. Verifique as permissões e tente novamente.` as any, 
+                  variant: "destructive" as any,
+                  duration: 7000
+                });
               } finally {
                 setIsLoading(false);
               }
