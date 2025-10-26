@@ -63,18 +63,15 @@ const PreviewComanda = () => {
       try {
         setLoading(true);
         
-        // Buscar última comanda usando a mesma lógica do Histórico de Comandas
-        // para incluir comandas pendentes (sync_queue) e confirmadas
-        
-        // 1. Buscar comandas confirmadas (já sincronizadas)
-        const confirmed = await executeQuery<ComandaHeader>(
-          `SELECT comanda_id, comanda_data, codigo, comanda_tipo, observacoes, comanda_total
+        // COPIAR EXATAMENTE A LÓGICA DO HISTÓRICO DE COMANDAS
+        // Load confirmed comandas (already synced)
+        const confirmed = await executeQuery<any>(
+          `SELECT comanda_id, comanda_data, codigo, comanda_tipo, observacoes, comanda_total, item_id, material_id, preco_kg, kg_total, item_valor_total
            FROM comanda_20
-           WHERE comanda_id IS NOT NULL
            ORDER BY comanda_data DESC`
         );
 
-        // 2. Buscar comandas pendentes da sync_queue
+        // Load pending comandas and items from sync_queue (offline inserts)
         const pendingComandaInserts = await executeQuery<any>(
           `SELECT payload, created_at, record_id, id
            FROM sync_queue
@@ -96,8 +93,11 @@ const PreviewComanda = () => {
            ORDER BY created_at ASC`
         );
 
-        // Função para extrair chave da comanda do payload
-        const getPendingComandaKey = (payload: any, fallback?: string | number | null): string | null => {
+        const safeParse = (s: string) => {
+          try { return JSON.parse(s || '{}'); } catch { return {}; }
+        };
+
+        function getPendingComandaKey(payload: any, fallback?: string | number | null): string | null {
           try {
             if (payload && typeof payload === 'object') {
               const candidates = [
@@ -115,13 +115,9 @@ const PreviewComanda = () => {
             }
           } catch {}
           return fallback != null ? String(fallback) : null;
-        };
+        }
 
-        const safeParse = (s: string) => {
-          try { return JSON.parse(s || '{}'); } catch { return {}; }
-        };
-
-        // Agrupar itens pendentes por chave da comanda
+        // Group pending items by normalized comanda key
         const itemsByKey: Record<string, any[]> = {};
         for (const it of pendingItemInserts) {
           const payload = safeParse(it.payload);
@@ -131,7 +127,7 @@ const PreviewComanda = () => {
           itemsByKey[key].push({ ...payload, __queueCreatedAt: it.created_at, __syncId: it.id, __table: 'item', __source: 'sync_queue' });
         }
 
-        // Também incluir itens de 'ultimas_20'
+        // Also fold pending 'ultimas_20' rows into items when they reference a comanda
         for (const row of pendingUltimasInserts) {
           const payload = safeParse(row.payload);
           const key = getPendingComandaKey(payload, payload.comanda ?? payload.comanda_id ?? null);
@@ -152,7 +148,7 @@ const PreviewComanda = () => {
           });
         }
 
-        // Construir mapa de comandas pendentes
+        // Build pending comandas map using normalized key
         const pendingComandasMap: Record<string, any> = {};
         for (const row of pendingComandaInserts) {
           const payload = safeParse(row.payload);
@@ -174,7 +170,7 @@ const PreviewComanda = () => {
           }
         }
 
-        // Anexar itens às comandas pendentes
+        // Attach items to pending comandas by key; create synthetic groups for keys that only exist in items
         for (const key of Object.keys(itemsByKey)) {
           const list = itemsByKey[key] || [];
           if (!pendingComandasMap[key]) {
@@ -201,7 +197,7 @@ const PreviewComanda = () => {
           })));
         }
 
-        // Agrupar comandas confirmadas
+        // Group confirmed rows by comanda_id
         const confirmedGroupsMap: Record<string, any> = {};
         for (const r of confirmed) {
           const key = String(r.comanda_id ?? r.codigo ?? `c-${r.item_id ?? Math.random()}`);
@@ -217,19 +213,14 @@ const PreviewComanda = () => {
               items: [] as any[]
             };
           }
-          // Só adicionar item se tiver dados válidos (kg > 0 ou valor > 0)
-          const kg = Number(r.kg_total) || 0;
-          const valor = Number(r.item_valor_total) || 0;
-          if (kg > 0 || valor > 0) {
-            confirmedGroupsMap[key].items.push({
-              item_id: r.item_id ?? null,
-              material_id: r.material_id ?? null,
-              kg_total: kg,
-              preco_kg: Number(r.preco_kg) || 0,
-              item_valor_total: valor,
-              __source: 'confirmed'
-            });
-          }
+          confirmedGroupsMap[key].items.push({
+            item_id: r.item_id ?? null,
+            material_id: r.material_id ?? null,
+            kg_total: r.kg_total ?? 0,
+            preco_kg: r.preco_kg ?? 0,
+            item_valor_total: r.item_valor_total ?? 0,
+            __source: 'confirmed'
+          });
         }
 
         const confirmedGroups = Object.values(confirmedGroupsMap).map((g: any) => ({
@@ -237,38 +228,8 @@ const PreviewComanda = () => {
           comanda_total: g.items.reduce((acc: number, it: any) => acc + (Number(it.item_valor_total) || 0), 0)
         }));
 
-        // Para comandas confirmadas sem itens, tentar buscar itens separadamente
-        for (const group of confirmedGroups) {
-          if (group.items.length === 0 && group.comanda_id) {
-            try {
-              // Buscar itens diretamente da tabela 'item' se existir
-              const itemRows = await executeQuery<any>(
-                `SELECT i.*, m.nome as material_nome 
-                 FROM item i 
-                 LEFT JOIN material m ON m.id = i.material_id 
-                 WHERE i.comanda_id = ?`,
-                [group.comanda_id]
-              );
-              
-              if (itemRows && itemRows.length > 0) {
-                group.items = itemRows.map((item: any) => ({
-                  item_id: item.id ?? null,
-                  material_id: item.material_id ?? null,
-                  material_nome: item.material_nome ?? null,
-                  kg_total: Number(item.kg_total) || 0,
-                  preco_kg: Number(item.preco_kg) || 0,
-                  item_valor_total: Number(item.valor_total) || 0,
-                  __source: 'confirmed_item_table'
-                }));
-                group.comanda_total = group.items.reduce((acc: number, it: any) => acc + (Number(it.item_valor_total) || 0), 0);
-              }
-            } catch (error) {
-              // Ignorar erro se tabela item não existir
-            }
-          }
-        }
-
-        // Construir grupos pendentes com totais
+        // Build pending groups from pendingRows (group by comanda_id)
+        // Build pending groups with totals; keep comanda if it has any items
         const pendingGroups = Object.values(pendingComandasMap)
           .map((g: any) => ({
             ...g,
@@ -281,7 +242,7 @@ const PreviewComanda = () => {
           }))
           .filter((g: any) => Array.isArray(g.items) && g.items.length > 0);
 
-        // Deduplicar por codigo, preferir confirmadas
+        // Deduplicate by codigo first, fallback to comanda_id/key, prefer confirmed
         const confirmedCodes = new Set(
           confirmedGroups.map((c: any) => c.codigo).filter((x: any) => x != null)
         );
@@ -296,14 +257,13 @@ const PreviewComanda = () => {
           return true;
         });
 
-        // Unificar e ordenar por data (mais recente primeiro)
         const unifiedGroups = [...confirmedGroups, ...pendingFiltered].sort((a: any, b: any) => {
           const da = a.comanda_data ? new Date(a.comanda_data).getTime() : 0;
           const db = b.comanda_data ? new Date(b.comanda_data).getTime() : 0;
           return db - da;
         });
 
-        // Pegar a primeira (mais recente)
+        // PEGAR A PRIMEIRA (MAIS RECENTE) - EXATAMENTE COMO NO HISTÓRICO
         const latestComanda = unifiedGroups[0];
         
         if (latestComanda) {
