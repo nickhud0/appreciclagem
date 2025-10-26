@@ -31,5 +31,3 @@ Este projeto é um **aplicativo mobile offline-first** construído com:
 - Não alterar backend Supabase a menos que solicitado
 
 - Qualquer alteração deve manter o app leve, rápido e compatível com o fluxo offline → sync → nuvem
-
-

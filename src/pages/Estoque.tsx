@@ -178,24 +178,29 @@ const Estoque = () => {
             <p className="text-muted-foreground">Tente ajustar a busca.</p>
           </Card>
         ) : (
-          <div className="space-y-2">
-            {/* Header row */}
-            <div className="px-1 py-1 text-xs text-muted-foreground flex items-center">
-              <div className="flex-1">Nome</div>
-              <div className="w-[120px] text-right pr-4">Médio/kg</div>
-              <div className="w-[120px] text-right">Total</div>
-            </div>
+          <div className="space-y-3">
             {filtrado.map((item) => (
-              <Card key={item.material} className="bg-card/60 border border-border/20 rounded-2xl p-3 shadow-sm backdrop-blur-md">
-                <div className="flex items-center min-w-0">
-                  <div className="flex-1 min-w-0">
-                    <div className="truncate text-base font-semibold text-foreground">{item.material}</div>
+              <Card key={item.material} className="bg-card/60 border border-border/20 rounded-2xl p-4 shadow-sm backdrop-blur-md">
+                <div className="space-y-3">
+                  {/* Nome do Material */}
+                  <div className="text-lg font-bold text-foreground leading-tight">
+                    {item.material}
                   </div>
-                  <div className="w-[120px] text-right text-sm text-muted-foreground whitespace-nowrap pr-4">
-                    <span className="font-medium text-primary">{formatCurrency(item.valor_medio_kg || 0)}</span>
-                  </div>
-                  <div className="w-[120px] text-right text-sm text-muted-foreground whitespace-nowrap">
-                    <span className="font-medium text-primary">{formatCurrency(item.valor_total_gasto || 0)}</span>
+                  
+                  {/* Informações do Material */}
+                  <div className="grid grid-cols-1 gap-2">
+                    <div className="flex justify-between items-center">
+                      <span className="text-sm text-muted-foreground">KG:</span>
+                      <span className="font-semibold text-primary">{formatWeight(item.kg_total || 0)}</span>
+                    </div>
+                    <div className="flex justify-between items-center">
+                      <span className="text-sm text-muted-foreground">Médio:</span>
+                      <span className="font-semibold text-primary">{formatCurrency(item.valor_medio_kg || 0)}/kg</span>
+                    </div>
+                    <div className="flex justify-between items-center">
+                      <span className="text-sm text-muted-foreground">Total:</span>
+                      <span className="font-semibold text-primary">{formatCurrency(item.valor_total_gasto || 0)}</span>
+                    </div>
                   </div>
                 </div>
               </Card>
