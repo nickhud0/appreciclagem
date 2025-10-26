@@ -62,28 +62,282 @@ const PreviewComanda = () => {
     async function loadLatestComanda() {
       try {
         setLoading(true);
-        const heads = await executeQuery<ComandaHeader>(
+        
+        // Buscar última comanda usando a mesma lógica do Histórico de Comandas
+        // para incluir comandas pendentes (sync_queue) e confirmadas
+        
+        // 1. Buscar comandas confirmadas (já sincronizadas)
+        const confirmed = await executeQuery<ComandaHeader>(
           `SELECT comanda_id, comanda_data, codigo, comanda_tipo, observacoes, comanda_total
            FROM comanda_20
            WHERE comanda_id IS NOT NULL
-           ORDER BY comanda_data DESC
-           LIMIT 1`
+           ORDER BY comanda_data DESC`
         );
 
-        const h = heads?.[0] || null;
-        setHeader(h);
+        // 2. Buscar comandas pendentes da sync_queue
+        const pendingComandaInserts = await executeQuery<any>(
+          `SELECT payload, created_at, record_id, id
+           FROM sync_queue
+           WHERE synced = 0 AND table_name = 'comanda' AND operation = 'INSERT'
+           ORDER BY created_at DESC`
+        );
 
-        if (h?.comanda_id != null) {
-          const lines = await executeQuery<ComandaItem>(
-            `SELECT c.item_id, c.material_id, m.nome as material_nome, c.preco_kg, c.kg_total, c.item_valor_total
-             FROM comanda_20 c
-             LEFT JOIN material m ON m.id = c.material_id
-             WHERE c.comanda_id = ?
-             ORDER BY c.item_id ASC`,
-            [h.comanda_id]
-          );
-          setItens(lines || []);
+        const pendingItemInserts = await executeQuery<any>(
+          `SELECT payload, created_at, id
+           FROM sync_queue
+           WHERE synced = 0 AND table_name = 'item' AND operation = 'INSERT'
+           ORDER BY created_at ASC`
+        );
+
+        const pendingUltimasInserts = await executeQuery<any>(
+          `SELECT payload, created_at, id
+           FROM sync_queue
+           WHERE synced = 0 AND table_name = 'ultimas_20' AND operation = 'INSERT'
+           ORDER BY created_at ASC`
+        );
+
+        // Função para extrair chave da comanda do payload
+        const getPendingComandaKey = (payload: any, fallback?: string | number | null): string | null => {
+          try {
+            if (payload && typeof payload === 'object') {
+              const candidates = [
+                payload.codigo,
+                payload.comanda_codigo,
+                payload.comanda_id,
+                payload.comanda,
+                payload.id_local,
+                payload.local_id,
+                payload.temp_id
+              ];
+              for (const c of candidates) {
+                if (c !== undefined && c !== null && String(c).trim() !== '') return String(c);
+              }
+            }
+          } catch {}
+          return fallback != null ? String(fallback) : null;
+        };
+
+        const safeParse = (s: string) => {
+          try { return JSON.parse(s || '{}'); } catch { return {}; }
+        };
+
+        // Agrupar itens pendentes por chave da comanda
+        const itemsByKey: Record<string, any[]> = {};
+        for (const it of pendingItemInserts) {
+          const payload = safeParse(it.payload);
+          const key = getPendingComandaKey(payload, null);
+          if (key == null) continue;
+          if (!itemsByKey[key]) itemsByKey[key] = [];
+          itemsByKey[key].push({ ...payload, __queueCreatedAt: it.created_at, __syncId: it.id, __table: 'item', __source: 'sync_queue' });
+        }
+
+        // Também incluir itens de 'ultimas_20'
+        for (const row of pendingUltimasInserts) {
+          const payload = safeParse(row.payload);
+          const key = getPendingComandaKey(payload, payload.comanda ?? payload.comanda_id ?? null);
+          if (key == null) continue;
+          if (!itemsByKey[key]) itemsByKey[key] = [];
+          const precoKg = payload.preco_kg ?? payload.preco ?? 0;
+          const kg = payload.kg_total ?? payload.quantidade ?? payload.kg ?? 0;
+          const itemTotal = (payload.valor_total ?? payload.total ?? (Number(precoKg) * Number(kg))) || 0;
+          itemsByKey[key].push({
+            material_id: payload.material ?? null,
+            preco_kg: precoKg,
+            kg_total: kg,
+            item_valor_total: itemTotal,
+            __source: 'sync_queue',
+            __syncId: row.id,
+            __table: 'ultimas_20',
+            __queueCreatedAt: row.created_at
+          });
+        }
+
+        // Construir mapa de comandas pendentes
+        const pendingComandasMap: Record<string, any> = {};
+        for (const row of pendingComandaInserts) {
+          const payload = safeParse(row.payload);
+          const localFallback = row.record_id ?? payload.id ?? payload.local_id ?? payload.temp_id ?? row.id;
+          const key = getPendingComandaKey(payload, localFallback);
+          if (key == null) continue;
+          if (!pendingComandasMap[key]) {
+            pendingComandasMap[key] = {
+              comanda_key: key,
+              comanda_id: String(localFallback),
+              codigo: payload.codigo ?? payload.code ?? null,
+              comanda_data: payload.data ?? payload.comanda_data ?? row.created_at ?? null,
+              comanda_tipo: payload.tipo ?? payload.comanda_tipo ?? null,
+              observacoes: payload.observacoes ?? null,
+              origem_offline: 1,
+              __is_pending: true,
+              items: [] as any[]
+            };
+          }
+        }
+
+        // Anexar itens às comandas pendentes
+        for (const key of Object.keys(itemsByKey)) {
+          const list = itemsByKey[key] || [];
+          if (!pendingComandasMap[key]) {
+            pendingComandasMap[key] = {
+              comanda_key: key,
+              comanda_id: key,
+              codigo: null,
+              comanda_data: null,
+              comanda_tipo: null,
+              observacoes: null,
+              origem_offline: 1,
+              __is_pending: true,
+              items: [] as any[]
+            };
+          }
+          pendingComandasMap[key].items.push(...list.map((it: any) => ({
+            material_id: it.material ?? it.material_id ?? it.materialId ?? null,
+            kg_total: it.kg_total ?? it.quantidade ?? it.kg ?? 0,
+            preco_kg: it.preco_kg ?? it.preco ?? 0,
+            item_valor_total: (it.valor_total ?? it.total ?? ((Number(it.preco_kg ?? it.preco) || 0) * (Number(it.kg_total ?? it.quantidade ?? it.kg) || 0))) || 0,
+            __source: it.__source ?? 'sync_queue',
+            __syncId: it.__syncId ?? null,
+            __table: it.__table ?? null
+          })));
+        }
+
+        // Agrupar comandas confirmadas
+        const confirmedGroupsMap: Record<string, any> = {};
+        for (const r of confirmed) {
+          const key = String(r.comanda_id ?? r.codigo ?? `c-${r.item_id ?? Math.random()}`);
+          if (!confirmedGroupsMap[key]) {
+            confirmedGroupsMap[key] = {
+              comanda_id: r.comanda_id ?? key,
+              codigo: r.codigo ?? null,
+              comanda_data: r.comanda_data ?? null,
+              comanda_tipo: r.comanda_tipo ?? null,
+              observacoes: r.observacoes ?? null,
+              origem_offline: r.origem_offline ?? 0,
+              __is_pending: false,
+              items: [] as any[]
+            };
+          }
+          // Só adicionar item se tiver dados válidos (kg > 0 ou valor > 0)
+          const kg = Number(r.kg_total) || 0;
+          const valor = Number(r.item_valor_total) || 0;
+          if (kg > 0 || valor > 0) {
+            confirmedGroupsMap[key].items.push({
+              item_id: r.item_id ?? null,
+              material_id: r.material_id ?? null,
+              kg_total: kg,
+              preco_kg: Number(r.preco_kg) || 0,
+              item_valor_total: valor,
+              __source: 'confirmed'
+            });
+          }
+        }
+
+        const confirmedGroups = Object.values(confirmedGroupsMap).map((g: any) => ({
+          ...g,
+          comanda_total: g.items.reduce((acc: number, it: any) => acc + (Number(it.item_valor_total) || 0), 0)
+        }));
+
+        // Para comandas confirmadas sem itens, tentar buscar itens separadamente
+        for (const group of confirmedGroups) {
+          if (group.items.length === 0 && group.comanda_id) {
+            try {
+              // Buscar itens diretamente da tabela 'item' se existir
+              const itemRows = await executeQuery<any>(
+                `SELECT i.*, m.nome as material_nome 
+                 FROM item i 
+                 LEFT JOIN material m ON m.id = i.material_id 
+                 WHERE i.comanda_id = ?`,
+                [group.comanda_id]
+              );
+              
+              if (itemRows && itemRows.length > 0) {
+                group.items = itemRows.map((item: any) => ({
+                  item_id: item.id ?? null,
+                  material_id: item.material_id ?? null,
+                  material_nome: item.material_nome ?? null,
+                  kg_total: Number(item.kg_total) || 0,
+                  preco_kg: Number(item.preco_kg) || 0,
+                  item_valor_total: Number(item.valor_total) || 0,
+                  __source: 'confirmed_item_table'
+                }));
+                group.comanda_total = group.items.reduce((acc: number, it: any) => acc + (Number(it.item_valor_total) || 0), 0);
+              }
+            } catch (error) {
+              // Ignorar erro se tabela item não existir
+            }
+          }
+        }
+
+        // Construir grupos pendentes com totais
+        const pendingGroups = Object.values(pendingComandasMap)
+          .map((g: any) => ({
+            ...g,
+            items: (Array.isArray(g.items) ? g.items : []).filter((it: any) => {
+              const kg = Number(it.kg_total) || 0;
+              const vt = Number(it.item_valor_total) || 0;
+              return !(kg === 0 && vt === 0);
+            }),
+            comanda_total: (Array.isArray(g.items) ? g.items : []).reduce((acc: number, it: any) => acc + (Number(it.item_valor_total) || 0), 0)
+          }))
+          .filter((g: any) => Array.isArray(g.items) && g.items.length > 0);
+
+        // Deduplicar por codigo, preferir confirmadas
+        const confirmedCodes = new Set(
+          confirmedGroups.map((c: any) => c.codigo).filter((x: any) => x != null)
+        );
+        const confirmedIds = new Set(
+          confirmedGroups.map((c: any) => String(c.comanda_id || '')).filter((x: any) => x)
+        );
+        const pendingFiltered = pendingGroups.filter((r: any) => {
+          const hasCode = !!r.codigo;
+          if (hasCode && confirmedCodes.has(r.codigo)) return false;
+          const rid = String(r.comanda_id || r.comanda_key || '');
+          if (rid && confirmedIds.has(rid)) return false;
+          return true;
+        });
+
+        // Unificar e ordenar por data (mais recente primeiro)
+        const unifiedGroups = [...confirmedGroups, ...pendingFiltered].sort((a: any, b: any) => {
+          const da = a.comanda_data ? new Date(a.comanda_data).getTime() : 0;
+          const db = b.comanda_data ? new Date(b.comanda_data).getTime() : 0;
+          return db - da;
+        });
+
+        // Pegar a primeira (mais recente)
+        const latestComanda = unifiedGroups[0];
+        
+        if (latestComanda) {
+          setHeader({
+            comanda_id: Number(latestComanda.comanda_id) || null,
+            comanda_data: latestComanda.comanda_data || null,
+            codigo: latestComanda.codigo || null,
+            comanda_tipo: latestComanda.comanda_tipo || null,
+            observacoes: latestComanda.observacoes || null,
+            comanda_total: Number(latestComanda.comanda_total) || null,
+          });
+
+          // Buscar nomes dos materiais para os itens
+          const materialIds = Array.from(new Set(
+            latestComanda.items.map((it: any) => Number(it.material_id)).filter((v: any) => Number.isFinite(v))
+          ));
+          
+          let materialMap: Record<number, any> = {};
+          if (materialIds.length > 0) {
+            const placeholders = materialIds.map(() => '?').join(', ');
+            const materials = await executeQuery<any>(`SELECT id, nome FROM material WHERE id IN (${placeholders})`, materialIds);
+            materialMap = Object.fromEntries(materials.map((m: any) => [Number(m.id), m]));
+          }
+
+          setItens(latestComanda.items.map((it: any, idx: number) => ({
+            item_id: idx + 1,
+            material_id: Number(it.material_id) || null,
+            material_nome: materialMap[Number(it.material_id)]?.nome ?? it.material_nome ?? null,
+            preco_kg: Number(it.preco_kg) || 0,
+            kg_total: Number(it.kg_total) || 0,
+            item_valor_total: Number(it.item_valor_total) || 0,
+          })));
         } else {
+          setHeader(null);
           setItens([]);
         }
       } finally {
