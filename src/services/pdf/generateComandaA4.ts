@@ -1,7 +1,7 @@
 import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
 import { Filesystem, Directory } from "@capacitor/filesystem";
 import { Capacitor } from "@capacitor/core";
-import { formatCurrency, formatNumber, formatDateTime } from "@/utils/formatters";
+import { formatCurrency, formatNumber, formatDateTime, formatDate } from "@/utils/formatters";
 
 type MinimalHeader = {
   codigo: string | null;
@@ -44,41 +44,55 @@ function bytesToBase64(bytes: Uint8Array): string {
   return btoa(binary);
 }
 
+// Função para formatar apenas o horário
+function formatTime(date: Date | string): string {
+  const dateObj = typeof date === 'string' ? new Date(date) : date;
+  return new Intl.DateTimeFormat("pt-BR", {
+    hour: "2-digit",
+    minute: "2-digit"
+  }).format(dateObj);
+}
+
 export async function generateAndSaveComandaA4Pdf({ header, groupedItens, total }: GenerateParams): Promise<{ filename: string; usedDirectoryName: 'Downloads' | 'Documents' }>{
   const codigo = String(header?.codigo || "comanda");
   const filename = `comanda-${sanitizeFilename(codigo)}.pdf`;
 
-  // Receipt format: 58mm width with dynamic height
+  // Layout otimizado - formato A4 com comanda ocupando mais espaço
   const pdfDoc = await PDFDocument.create();
-  const paperWidthMm = 58;
-  const marginMm = 3.5;
+  const paperWidthMm = 210; // A4 width
+  const paperHeightMm = 297; // A4 height
+  const marginMm = 15; // Margem reduzida
   const paperWidthPt = mmToPt(paperWidthMm);
+  const paperHeightPt = mmToPt(paperHeightMm);
   const marginPt = mmToPt(marginMm);
 
   const helvetica = await pdfDoc.embedFont(StandardFonts.Helvetica);
   const helveticaBold = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
 
-  // Typography configuration (all sizes in pt)
+  // Typography configuration com tamanhos muito maiores para melhor visibilidade
   const fonts = {
-    title: { size: 13, font: helveticaBold, lh: 16 },
-    sub: { size: 8.5, font: helvetica, lh: 11 },
-    meta: { size: 9.2, font: helvetica, lh: 12 },
-    tableHeader: { size: 9, font: helveticaBold, lh: 11 },
-    tableBody: { size: 9.2, font: helvetica, lh: 12 },
-    total: { size: 11.5, font: helveticaBold, lh: 14 },
-    obs: { size: 9, font: helvetica, lh: 11 },
-    footer: { size: 10, font: helveticaBold, lh: 12 },
+    title: { size: 32, font: helveticaBold, lh: 38 }, // text-lg muito maior
+    sub: { size: 22, font: helvetica, lh: 28 }, // text-sm muito maior
+    meta: { size: 22, font: helvetica, lh: 28 }, // text-sm muito maior
+    itemName: { size: 22, font: helvetica, lh: 28 }, // text-sm muito maior
+    itemDetail: { size: 22, font: helvetica, lh: 28 }, // text-sm muito maior
+    total: { size: 28, font: helveticaBold, lh: 34 }, // text-base muito maior
+    footer: { size: 20, font: helvetica, lh: 26 }, // text-xs muito maior
+    footerBold: { size: 20, font: helveticaBold, lh: 26 }, // text-xs font-bold muito maior
   };
 
-  // Spacing configuration
+  // Spacing configuration otimizado para fontes maiores
   const spacing = {
-    xs: 4,
-    sm: 6,
-    md: 8,
-    lg: 12,
+    xs: 10, // space-y-1 muito maior
+    sm: 16, // space-y-2 muito maior
+    md: 24, // mb-4 muito maior
+    lg: 36, // my-4 muito maior
   };
 
   const availableWidth = paperWidthPt - marginPt * 2;
+  const maxCardWidth = mmToPt(600); // Largura muito aumentada para ocupar máximo espaço
+  const cardWidth = Math.min(availableWidth, maxCardWidth);
+  const cardX = marginPt + (availableWidth - cardWidth) / 2;
 
   // Helper: truncate text to fit width
   const truncate = (text: string, maxW: number, font: any, size: number): string => {
@@ -124,45 +138,53 @@ export async function generateAndSaveComandaA4Pdf({ header, groupedItens, total 
     return lines.length > 0 ? lines : [''];
   };
 
-  // Calculate total page height needed
+  // Calculate total page height needed (otimizado para reduzir espaços em branco)
   const calculateHeight = (): number => {
     let h = marginPt; // top margin
     
-    // Header block
-    h += fonts.title.lh + spacing.sm;
-    h += fonts.sub.lh + spacing.xs;
-    h += fonts.sub.lh + spacing.xs;
-    h += fonts.sub.lh + spacing.md;
+    // Cabeçalho (centralizado)
+    h += fonts.title.lh + spacing.md; // Nome da empresa
+    h += fonts.sub.lh + spacing.xs; // Endereço linha 1
+    h += fonts.sub.lh + spacing.xs; // Endereço linha 2  
+    h += fonts.sub.lh + spacing.xs; // Telefone
+    h += fonts.sub.lh + spacing.md; // CNPJ/PIX
     
-    // Metadata (2 lines)
-    h += fonts.meta.lh + spacing.xs;
-    h += fonts.meta.lh + spacing.md;
+    // Separador
+    h += spacing.lg; // my-4
     
-    // Table header + divider
-    h += fonts.tableHeader.lh + spacing.xs;
-    h += 1 + spacing.sm; // divider + gap
+    // Dados da Comanda (4 linhas)
+    h += fonts.meta.lh + spacing.xs; // Comanda
+    h += fonts.meta.lh + spacing.xs; // Data
+    h += fonts.meta.lh + spacing.xs; // Horário
+    h += fonts.meta.lh + spacing.md; // Tipo
     
-    // Rows (single line per item + divider)
+    // Separador
+    h += spacing.lg; // my-4
+    
+    // Itens (2 linhas por item)
     for (const _ of groupedItens) {
-      h += fonts.tableBody.lh + spacing.xs;
-      h += 0.5 + spacing.xs; // row divider + gap
+      h += fonts.itemName.lh + spacing.xs; // Nome do produto
+      h += fonts.itemDetail.lh + spacing.sm; // Quantidade x preço + total
     }
     
-    // Total section
-    h += spacing.sm;
+    // Separador
+    h += spacing.lg; // my-4
+    
+    // Total
     h += fonts.total.lh + spacing.md;
     
-    // Observations (if any)
-    if (header?.observacoes) {
-      const lines = wrapText(String(header.observacoes), availableWidth, fonts.obs.font, fonts.obs.size);
-      h += lines.length * fonts.obs.lh + spacing.sm;
-    }
+    // Separador
+    h += spacing.lg; // my-4
     
-    // Footer
-    h += fonts.footer.lh + spacing.md;
+    // Rodapé (3 linhas)
+    h += fonts.footer.lh + spacing.xs; // Obrigado
+    h += fonts.footerBold.lh + spacing.sm; // DEUS SEJA LOUVADO!!!
+    h += fonts.footer.lh + spacing.md; // Versao 1.0
+    
     h += marginPt; // bottom margin
     
-    return Math.max(h, mmToPt(100));
+    // Ajustar altura mínima para fontes maiores
+    return Math.max(h, mmToPt(200)); // Altura mínima ajustada para fontes maiores
   };
 
   const pageHeight = calculateHeight();
@@ -172,149 +194,134 @@ export async function generateAndSaveComandaA4Pdf({ header, groupedItens, total 
 
   let y = pageH - marginPt;
 
-  // Helper: draw text at cursor position
+  // Helper: draw text at cursor position (centralizado no card)
   const draw = (text: string, style: any, align: 'left' | 'center' | 'right' = 'left') => {
     const { size, font } = style;
     const textW = font.widthOfTextAtSize(text, size);
-    let x = marginPt;
+    let x = cardX;
     
     if (align === 'center') {
-      x = marginPt + (availableWidth - textW) / 2;
+      x = cardX + (cardWidth - textW) / 2;
     } else if (align === 'right') {
-      x = pageW - marginPt - textW;
+      x = cardX + cardWidth - textW;
     }
     
-    page.drawText(text, { x, y, size, font, color: rgb(0.1, 0.1, 0.15) });
-  };
-
-  const drawMuted = (text: string, style: any, align: 'left' | 'center' | 'right' = 'left') => {
-    const { size, font } = style;
-    const textW = font.widthOfTextAtSize(text, size);
-    let x = marginPt;
-    
-    if (align === 'center') {
-      x = marginPt + (availableWidth - textW) / 2;
-    } else if (align === 'right') {
-      x = pageW - marginPt - textW;
-    }
-    
-    page.drawText(text, { x, y, size, font, color: rgb(0.42, 0.45, 0.50) });
+    page.drawText(text, { x, y, size, font, color: rgb(0, 0, 0) }); // Preto como na pré-visualização
   };
 
   const move = (amount: number) => { y -= amount; };
 
-  // === RENDER CONTENT ===
+  // Helper: draw separator line (tracejada)
+  const drawSeparator = () => {
+    const dashLength = 3;
+    const gapLength = 2;
+    let x = cardX;
+    
+    while (x < cardX + cardWidth) {
+      const dashEnd = Math.min(x + dashLength, cardX + cardWidth);
+      page.drawLine({
+        start: { x, y: y - 1 },
+        end: { x: dashEnd, y: y - 1 },
+        thickness: 0.5,
+        color: rgb(0, 0, 0)
+      });
+      x = dashEnd + gapLength;
+    }
+  };
 
-  // Header
-  draw("RECICLAGEM PEREQUÊ", fonts.title, 'center');
-  move(fonts.title.lh + spacing.sm);
+  // === RENDER CONTENT (replicando exatamente o layout da pré-visualização) ===
+
+  // Cabeçalho (centralizado)
+  draw("Reciclagem Pereque", fonts.title, 'center');
+  move(fonts.title.lh + spacing.md);
   
-  drawMuted("Ubatuba • Perequê Mirim", fonts.sub, 'center');
+  draw("Ubatuba, Pereque Mirim, Av Marginal, 2504", fonts.sub, 'center');
   move(fonts.sub.lh + spacing.xs);
   
-  drawMuted("Av. Marginal, 2504", fonts.sub, 'center');
+  draw("12 99162-0321", fonts.sub, 'center');
   move(fonts.sub.lh + spacing.xs);
   
-  drawMuted("CNPJ: 45.492.161/0001-88", fonts.sub, 'center');
+  draw("CNPJ/PIX - 45.492.161/0001-88", fonts.sub, 'center');
   move(fonts.sub.lh + spacing.md);
 
-  // Metadata
-  const dateTxt = `Data/Hora: ${header?.comanda_data ? formatDateTime(header.comanda_data) : '—'}`;
-  const dateW = fonts.meta.font.widthOfTextAtSize(dateTxt, fonts.meta.size);
-  const leftMaxForCode = Math.max(0, availableWidth - dateW - 8);
-  const codeFull = `Código: ${codigo}`;
-  const codeTxt = truncate(codeFull, leftMaxForCode, fonts.meta.font, fonts.meta.size);
-  draw(codeTxt, fonts.meta, 'left');
-  draw(dateTxt, fonts.meta, 'right');
+  // Separador tracejado
+  drawSeparator();
+  move(spacing.lg);
+
+  // Dados da Comanda
+  const comandaLabel = "Comanda:";
+  const comandaValue = header?.codigo || '—';
+  const comandaLabelW = fonts.meta.font.widthOfTextAtSize(comandaLabel, fonts.meta.size);
+  page.drawText(comandaLabel, { x: cardX, y, size: fonts.meta.size, font: fonts.meta.font, color: rgb(0, 0, 0) });
+  page.drawText(comandaValue, { x: cardX + cardWidth - fonts.meta.font.widthOfTextAtSize(comandaValue, fonts.meta.size), y, size: fonts.meta.size, font: helveticaBold, color: rgb(0, 0, 0) });
   move(fonts.meta.lh + spacing.xs);
-  
-  const tipoTxt = `Tipo: ${String(header?.comanda_tipo || '—').toUpperCase()}`;
-  draw(tipoTxt, fonts.meta, 'left');
+
+  const dataLabel = "Data:";
+  const dataValue = header?.comanda_data ? formatDate(header.comanda_data) : '—';
+  page.drawText(dataLabel, { x: cardX, y, size: fonts.meta.size, font: fonts.meta.font, color: rgb(0, 0, 0) });
+  page.drawText(dataValue, { x: cardX + cardWidth - fonts.meta.font.widthOfTextAtSize(dataValue, fonts.meta.size), y, size: fonts.meta.size, font: fonts.meta.font, color: rgb(0, 0, 0) });
+  move(fonts.meta.lh + spacing.xs);
+
+  const horarioLabel = "Horário:";
+  const horarioValue = header?.comanda_data ? formatTime(header.comanda_data) : '—';
+  page.drawText(horarioLabel, { x: cardX, y, size: fonts.meta.size, font: fonts.meta.font, color: rgb(0, 0, 0) });
+  page.drawText(horarioValue, { x: cardX + cardWidth - fonts.meta.font.widthOfTextAtSize(horarioValue, fonts.meta.size), y, size: fonts.meta.size, font: fonts.meta.font, color: rgb(0, 0, 0) });
+  move(fonts.meta.lh + spacing.xs);
+
+  const tipoLabel = "Tipo:";
+  const tipoValue = (header?.comanda_tipo || '—').toUpperCase();
+  page.drawText(tipoLabel, { x: cardX, y, size: fonts.meta.size, font: fonts.meta.font, color: rgb(0, 0, 0) });
+  page.drawText(tipoValue, { x: cardX + cardWidth - fonts.meta.font.widthOfTextAtSize(tipoValue, fonts.meta.size), y, size: fonts.meta.size, font: fonts.meta.font, color: rgb(0, 0, 0) });
   move(fonts.meta.lh + spacing.md);
 
-  // Section header
-  drawMuted("ITENS", fonts.tableHeader, 'left');
-  move(fonts.tableHeader.lh + spacing.xs);
-  
-  // Column layout (percentages tuned to fit values): 50 | 18 | 14 | 18
-  const colW1 = Math.max(50, availableWidth * 0.50);
-  const colW2 = Math.max(22, availableWidth * 0.18);
-  const colW3 = Math.max(20, availableWidth * 0.14);
-  const colW4 = Math.max(22, availableWidth - (colW1 + colW2 + colW3));
-  const colX1 = marginPt;
-  const colX2 = colX1 + colW1;
-  const colX3 = colX2 + colW2;
-  const colX4 = colX3 + colW3;
+  // Separador tracejado
+  drawSeparator();
+  move(spacing.lg);
 
-  // Table header
-  page.drawText("Material", { x: colX1, y, size: fonts.tableHeader.size, font: fonts.tableHeader.font, color: rgb(0.18, 0.20, 0.26) });
-  const precoH = "Preço"; const precoHW = fonts.tableHeader.font.widthOfTextAtSize(precoH, fonts.tableHeader.size);
-  page.drawText(precoH, { x: colX2 + (colW2 - precoHW) / 2, y, size: fonts.tableHeader.size, font: fonts.tableHeader.font, color: rgb(0.18, 0.20, 0.26) });
-  const kgH = "KG"; const kgHW = fonts.tableHeader.font.widthOfTextAtSize(kgH, fonts.tableHeader.size);
-  page.drawText(kgH, { x: colX3 + (colW3 - kgHW) / 2, y, size: fonts.tableHeader.size, font: fonts.tableHeader.font, color: rgb(0.18, 0.20, 0.26) });
-  const totalH = "Total"; const totalHW = fonts.tableHeader.font.widthOfTextAtSize(totalH, fonts.tableHeader.size);
-  page.drawText(totalH, { x: colX4 + colW4 - totalHW, y, size: fonts.tableHeader.size, font: fonts.tableHeader.font, color: rgb(0.18, 0.20, 0.26) });
-  move(fonts.tableHeader.lh + spacing.xs);
-
-  // Divider
-  page.drawRectangle({ x: marginPt, y: y - 0.5, width: availableWidth, height: 0.7, color: rgb(0.88, 0.90, 0.94) });
-  move(spacing.sm);
-
-  // Rows (single line)
-  for (const item of groupedItens) {
-    const nome = truncate(String(item.nome || ''), colW1 - 2, fonts.tableBody.font, fonts.tableBody.size);
-    const precoTxt = formatCurrencyNoSymbol(Number(item.precoMedio || 0));
-    const kgTxt = formatNumber(Number(item.kg || 0), 2);
-    const totalTxt = formatCurrency(Number(item.total || 0));
-
-    // Fit numeric sizes if needed
-    const precoSize = fitSize(precoTxt, colW2 - 1, fonts.tableBody.font, fonts.tableBody.size, 8.4);
-    const kgSize = fitSize(kgTxt, colW3 - 1, fonts.tableBody.font, fonts.tableBody.size, 8.4);
-    const totalSize = fitSize(totalTxt, colW4 - 1, helveticaBold, fonts.tableBody.size, 8.4);
-
-    // Draw material
-    page.drawText(nome, { x: colX1, y, size: fonts.tableBody.size, font: fonts.tableBody.font, color: rgb(0.1, 0.1, 0.15) });
-
-    // Draw price centered in its column
-    const precoW = fonts.tableBody.font.widthOfTextAtSize(precoTxt, precoSize);
-    page.drawText(precoTxt, { x: colX2 + (colW2 - precoW) / 2, y, size: precoSize, font: fonts.tableBody.font, color: rgb(0.1, 0.1, 0.15) });
-
-    // Draw KG centered
-    const kgW = fonts.tableBody.font.widthOfTextAtSize(kgTxt, kgSize);
-    page.drawText(kgTxt, { x: colX3 + (colW3 - kgW) / 2, y, size: kgSize, font: fonts.tableBody.font, color: rgb(0.1, 0.1, 0.15) });
-
-    // Draw total right-aligned
-    const totalW2 = helveticaBold.widthOfTextAtSize(totalTxt, totalSize);
-    page.drawText(totalTxt, { x: colX4 + colW4 - totalW2, y, size: totalSize, font: helveticaBold, color: rgb(0.1, 0.1, 0.15) });
-
-    move(fonts.tableBody.lh + spacing.xs);
-
-    // Row divider
-    page.drawRectangle({ x: marginPt, y: y - 0.25, width: availableWidth, height: 0.5, color: rgb(0.92, 0.93, 0.95) });
-    move(spacing.xs);
+  // Itens
+  if (groupedItens.length === 0) {
+    draw("Nenhum item", fonts.itemName, 'center');
+    move(fonts.itemName.lh + spacing.md);
+  } else {
+    for (const item of groupedItens) {
+      // Nome do produto (linha inteira)
+      draw(item.nome, fonts.itemName, 'left');
+      move(fonts.itemName.lh + spacing.xs);
+      
+      // Quantidade x preço (indentado) | total (direita)
+      const detailText = `${formatNumber(item.kg, 2)}x R$ ${item.precoMedio.toFixed(2)}`;
+      const totalText = `R$ ${item.total.toFixed(2)}`;
+      const indentX = cardX + mmToPt(20); // Indentação muito maior para fontes maiores
+      
+      page.drawText(detailText, { x: indentX, y, size: fonts.itemDetail.size, font: fonts.itemDetail.font, color: rgb(0, 0, 0) });
+      page.drawText(totalText, { x: cardX + cardWidth - fonts.itemDetail.font.widthOfTextAtSize(totalText, fonts.itemDetail.size), y, size: fonts.itemDetail.size, font: helveticaBold, color: rgb(0, 0, 0) });
+      move(fonts.itemDetail.lh + spacing.sm);
+    }
   }
+
+  // Separador tracejado
+  drawSeparator();
+  move(spacing.lg);
 
   // Total
-  move(spacing.sm);
-  const totalLabel = "TOTAL";
-  const totalValue = formatCurrency(Number(total || 0));
-  page.drawText(totalLabel, { x: marginPt, y, size: fonts.total.size, font: fonts.total.font, color: rgb(0.1, 0.1, 0.15) });
-  const totalW = fonts.total.font.widthOfTextAtSize(totalValue, fonts.total.size);
-  page.drawText(totalValue, { x: pageW - marginPt - totalW, y, size: fonts.total.size, font: fonts.total.font, color: rgb(0.1, 0.1, 0.15) });
+  const totalLabel = "TOTAL:";
+  const totalValue = `R$ ${Number(total).toFixed(2)}`;
+  page.drawText(totalLabel, { x: cardX, y, size: fonts.total.size, font: fonts.total.font, color: rgb(0, 0, 0) });
+  page.drawText(totalValue, { x: cardX + cardWidth - fonts.total.font.widthOfTextAtSize(totalValue, fonts.total.size), y, size: fonts.total.size, font: fonts.total.font, color: rgb(0, 0, 0) });
   move(fonts.total.lh + spacing.md);
 
-  // Observations
-  if (header?.observacoes) {
-    const lines = wrapText(String(header.observacoes), availableWidth, fonts.obs.font, fonts.obs.size);
-    for (const line of lines) {
-      drawMuted(line, fonts.obs, 'center');
-      move(fonts.obs.lh);
-    }
-    move(spacing.sm);
-  }
+  // Separador tracejado
+  drawSeparator();
+  move(spacing.lg);
 
-  // Footer
-  draw("Deus seja louvado", fonts.footer, 'center');
+  // Rodapé (centralizado)
+  draw("Obrigado", fonts.footer, 'center');
+  move(fonts.footer.lh + spacing.xs);
+  
+  draw("DEUS SEJA LOUVADO!!!", fonts.footerBold, 'center');
+  move(fonts.footerBold.lh + spacing.sm);
+  
+  draw("Versao 1.0", fonts.footer, 'center');
 
   // Save PDF
   const saveOpts = { useObjectStreams: false } as const;
